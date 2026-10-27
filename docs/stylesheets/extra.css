@@ -1,0 +1,60 @@
+@media (max-width: 767.98px) {
+    .col-md-9 table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+}
+
+.col-md-9 pre > code.language-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.rule-cards {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+}
+
+.rule-card {
+    min-width: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg, #fff);
+}
+
+.rule-card h2 {
+    margin-top: 0;
+    font-size: 1.25rem;
+    line-height: 1.35;
+}
+
+.rule-card h2 code {
+    color: inherit;
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+.rule-card-meta {
+    color: var(--bs-secondary-color, #6c757d);
+    font-size: 0.875rem;
+}
+
+.rule-example {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+}
+
+.rule-example > p:last-child {
+    margin-bottom: 0;
+}
+
+@media (min-width: 992px) {
+    .rule-cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

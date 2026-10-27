@@ -1,0 +1,55 @@
+site_name: style-audit
+site_description: A Python writing-style auditor with local NLP checks and optional LiteLLM review.
+strict: true
+
+theme:
+  name: mkdocs
+
+plugins:
+  - search
+
+hooks:
+  - docs/hooks.py
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mermaid@11.12.0/dist/mermaid.min.js
+
+extra_css:
+  - stylesheets/extra.css
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+  links:
+    not_found: warn
+    unrecognized_links: warn
+    anchors: warn
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Installation: installation.md
+      - Configuration: configuration.md
+      - LLM review and privacy: llm.md
+  - Reference:
+      - CLI and output: reference/cli.md
+      - Rulesets: reference/rules.md
+      - No AI slop: reference/no-ai-slop.md
+      - Readability: reference/readability.md
+  - Development:
+      - Architecture: architecture.md
+      - Contributing: contributing.md
+      - Dogfooding: dogfooding.md
