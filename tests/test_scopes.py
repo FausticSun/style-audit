@@ -187,7 +187,7 @@ class ScopedJudgmentTests(unittest.TestCase):
             with patch("style_audit.llm.litellm.systemone", side_effect=decision_provider), patch(
                 "style_audit.llm.litellm.completion", side_effect=AssertionError("Unexpected chat request")
             ):
-                return judge_document(document, rules, "microsoft/microsoft-decision-1")
+                return judge_document(document, rules, "azure-maas-judge/Decision-1")
 
         def chat_provider(*, messages, **kwargs):
             user_message = next(message for message in messages if message["role"] == "user")
@@ -347,11 +347,11 @@ class ScopedJudgmentTests(unittest.TestCase):
             return self._chat_response([])
 
         for backend, target, provider, model in (
-            ("decision", "systemone", decision_provider, "microsoft/microsoft-decision-1"),
-            ("chat", "completion", chat_provider, "openai/test-model"),
+            ("decision", "style_audit.llm.litellm.systemone", decision_provider, "azure-maas-judge/Decision-1"),
+            ("chat", "style_audit.llm.litellm.completion", chat_provider, "openai/test-model"),
         ):
             with self.subTest(backend=backend):
-                with patch(f"style_audit.llm.litellm.{target}", side_effect=provider):
+                with patch(target, side_effect=provider):
                     with self.assertRaises(AuditError):
                         judge_document(document, rules, model)
 

@@ -99,31 +99,47 @@ class DecisionJudgmentTests(unittest.TestCase):
         })
 
     def test_probability_at_threshold_emits_a_source_located_finding(self) -> None:
+        response = self._response({"NAS106": 0.8})
+        with patch("style_audit.llm.litellm.systemone", return_value=response):
+            findings = judge_document(
+                self.document,
+                self.rules,
+                "azure-maas-judge/Decision-1",
+                threshold=0.8,
+            )
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(finding.path, "draft.md")
+        self.assertEqual(finding.code, "NAS106")
+        self.assertEqual(finding.evidence, self.document.text)
+        self.assertEqual(
+            (finding.line, finding.column, finding.end_line, finding.end_column),
+            (1, 1, 1, len(self.document.text) + 1),
+        )
+        self.assertIn("0.8", finding.message)
+        self.assertEqual(finding.fix, "")
+
+
+    def test_retired_decision_aliases_do_not_fall_back_to_chat(self) -> None:
         for model in (
             "microsoft/microsoft-decision-1",
             "openrouter/microsoft/microsoft-decision-1",
         ):
             with self.subTest(model=model):
-                response = self._response({"NAS106": 0.8})
-                with patch("style_audit.llm.litellm.systemone", return_value=response):
-                    findings = judge_document(self.document, self.rules, model, threshold=0.8)
-                self.assertEqual(len(findings), 1)
-                finding = findings[0]
-                self.assertEqual(finding.path, "draft.md")
-                self.assertEqual(finding.code, "NAS106")
-                self.assertEqual(finding.evidence, self.document.text)
-                self.assertEqual(
-                    (finding.line, finding.column, finding.end_line, finding.end_column),
-                    (1, 1, 1, len(self.document.text) + 1),
-                )
-                self.assertIn("0.8", finding.message)
-                self.assertEqual(finding.fix, "")
+                with patch("style_audit.llm.litellm.systemone") as decision_call:
+                    with patch("style_audit.llm.litellm.completion") as chat_call:
+                        with patch("style_audit.llm.load_decision_api") as load_settings:
+                            with self.assertRaisesRegex(AuditError, "retired Decision-1"):
+                                judge_document(self.document, self.rules, model)
+                decision_call.assert_not_called()
+                chat_call.assert_not_called()
+                load_settings.assert_not_called()
 
     def test_probability_below_threshold_is_clean(self) -> None:
         response = self._response({"NAS106": 0.799999})
         with patch("style_audit.llm.litellm.systemone", return_value=response):
             findings = judge_document(
-                self.document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8
+                self.document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8
             )
         self.assertEqual(findings, [])
 
@@ -132,7 +148,7 @@ class DecisionJudgmentTests(unittest.TestCase):
         response = self._response({"NAS109": 0.2, "NAS106": 0.9})
         with patch("style_audit.llm.litellm.systemone", return_value=response):
             findings = judge_document(
-                self.document, rules, "microsoft/microsoft-decision-1", threshold=0.8
+                self.document, rules, "azure-maas-judge/Decision-1", threshold=0.8
             )
         self.assertEqual([finding.code for finding in findings], ["NAS106"])
 
@@ -141,7 +157,7 @@ class DecisionJudgmentTests(unittest.TestCase):
         response = self._response({"NAS109": 0.8, "NAS106": 1})
         with patch("style_audit.llm.litellm.systemone", return_value=response):
             findings = judge_document(
-                self.document, rules, "microsoft/microsoft-decision-1", threshold=0.8
+                self.document, rules, "azure-maas-judge/Decision-1", threshold=0.8
             )
         self.assertEqual({finding.code for finding in findings}, {"NAS109", "NAS106"})
         self.assertEqual(len(findings), 2)
@@ -154,7 +170,7 @@ class DecisionJudgmentTests(unittest.TestCase):
         response = self._response({"NAS106": 0.9})
         with patch("style_audit.llm.litellm.systemone", return_value=response):
             findings = judge_document(
-                document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8
+                document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8
             )
         self.assertEqual(
             [finding.evidence for finding in findings],
@@ -173,7 +189,7 @@ class DecisionJudgmentTests(unittest.TestCase):
         response = self._response({"NAS106": 0.9})
         with patch("style_audit.llm.litellm.systemone", return_value=response):
             findings = judge_document(
-                document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8
+                document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8
             )
         self.assertEqual(
             [finding.evidence for finding in findings],
@@ -194,7 +210,7 @@ class DecisionJudgmentTests(unittest.TestCase):
         response = self._response({"NAS106": 0.9})
         with patch("style_audit.llm.litellm.systemone", return_value=response):
             findings = judge_document(
-                document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8
+                document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8
             )
         self.assertEqual([finding.evidence for finding in findings], [
             '🌿 Before "a pivotal moment" middle `pivotal()` after.',
@@ -219,7 +235,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 with patch("style_audit.llm.litellm.systemone") as provider:
                     findings = judge_document(
                         TextDocument("draft.md", text), self.rules,
-                        "microsoft/microsoft-decision-1", threshold=0.8,
+                        "azure-maas-judge/Decision-1", threshold=0.8,
                     )
                 self.assertEqual(findings, [])
                 provider.assert_not_called()
@@ -239,7 +255,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 with patch("style_audit.llm.litellm.systemone", return_value=response):
                     with self.assertRaises(AuditError):
                         judge_document(
-                            self.document, rules, "microsoft/microsoft-decision-1", threshold=0.8
+                            self.document, rules, "azure-maas-judge/Decision-1", threshold=0.8
                         )
 
     def test_missing_or_non_mapping_answers_are_not_clean_results(self) -> None:
@@ -254,7 +270,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 with patch("style_audit.llm.litellm.systemone", return_value=response):
                     with self.assertRaises(AuditError):
                         judge_document(
-                            self.document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8
+                            self.document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8
                         )
 
     def test_wrong_answer_types_and_missing_probabilities_fail_visibly(self) -> None:
@@ -271,7 +287,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 with patch("style_audit.llm.litellm.systemone", return_value=response):
                     with self.assertRaises(AuditError):
                         judge_document(
-                            self.document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8
+                            self.document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8
                         )
 
     def test_invalid_probabilities_fail_even_if_they_would_not_reach_threshold(self) -> None:
@@ -284,7 +300,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 with patch("style_audit.llm.litellm.systemone", return_value=response):
                     with self.assertRaises(AuditError):
                         judge_document(
-                            self.document, self.rules, "microsoft/microsoft-decision-1", threshold=1
+                            self.document, self.rules, "azure-maas-judge/Decision-1", threshold=1
                         )
 
     def test_probability_endpoints_are_valid_and_threshold_is_inclusive(self) -> None:
@@ -293,7 +309,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 response = self._response({"NAS106": probability})
                 with patch("style_audit.llm.litellm.systemone", return_value=response):
                     findings = judge_document(
-                        self.document, self.rules, "microsoft/microsoft-decision-1", threshold=threshold
+                        self.document, self.rules, "azure-maas-judge/Decision-1", threshold=threshold
                     )
                 self.assertEqual(len(findings), expected_count)
 
@@ -302,8 +318,8 @@ class DecisionJudgmentTests(unittest.TestCase):
         with patch("style_audit.llm.litellm.systemone", side_effect=[
             self._response({"NAS106": 0.9}), RuntimeError("decision provider offline"),
         ]):
-            with self.assertRaisesRegex(AuditError, "decision provider offline"):
-                judge_document(document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8)
+            with self.assertRaisesRegex(AuditError, "LiteLLM Decisions call failed"):
+                judge_document(document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8)
 
     def test_late_malformed_answer_does_not_return_partial_findings(self) -> None:
         document = TextDocument("draft.md", "First visible paragraph.\n\nSecond visible paragraph.")
@@ -311,7 +327,7 @@ class DecisionJudgmentTests(unittest.TestCase):
             self._response({"NAS106": 0.9}), self._response({}),
         ]):
             with self.assertRaises(AuditError):
-                judge_document(document, self.rules, "microsoft/microsoft-decision-1", threshold=0.8)
+                judge_document(document, self.rules, "azure-maas-judge/Decision-1", threshold=0.8)
 
 
     def test_invalid_decision_thresholds_fail_before_provider_calls(self) -> None:
@@ -323,7 +339,7 @@ class DecisionJudgmentTests(unittest.TestCase):
                 with patch("style_audit.llm.litellm.systemone") as provider:
                     with self.assertRaisesRegex(AuditError, "threshold"):
                         judge_document(
-                            self.document, self.rules, "microsoft/microsoft-decision-1",
+                            self.document, self.rules, "azure-maas-judge/Decision-1",
                             threshold=threshold,
                         )
                 provider.assert_not_called()

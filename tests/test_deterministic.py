@@ -3,6 +3,7 @@
 import unittest
 
 from style_audit.deterministic import analyze_deterministic
+from style_audit.rules import RULES_BY_CODE
 from style_audit.text import TextDocument
 
 
@@ -28,6 +29,7 @@ class DeterministicRuleTests(unittest.TestCase):
             [
                 ("NAS002", "🧭", 2, 4),
                 ("NAS003", "serves as", 3, 9),
+                ("STE801", ";", 3, 28),
                 ("NAS003", "made a decision", 3, 39),
                 ("NAS003", "has the ability to", 4, 12),
             ],
@@ -37,6 +39,63 @@ class DeterministicRuleTests(unittest.TestCase):
         self.assertEqual(analyze_deterministic(TextDocument("empty.md", "")), [])
         source = 'The sentence says “delve”, `serves as`, and # 🪴 Example in code:\n'
         self.assertEqual(analyze_deterministic(TextDocument("quote.md", source)), [])
+
+    def test_configured_nas_words_override_and_extend_the_banned_list(self) -> None:
+        document = TextDocument(
+            "draft.md",
+            "The robust parser works. ROBUSTNESS is a separate term.\nThe excellent parser works.",
+        )
+        findings = analyze_deterministic(
+            document,
+            (RULES_BY_CODE["NAS001"],),
+            nas_allowed_words=("ROBUST",),
+            nas_disallowed_words=("excellent",),
+        )
+        self.assertEqual(
+            [(finding.code, finding.evidence, finding.line, finding.column) for finding in findings],
+            [("NAS001", "excellent", 2, 5)],
+        )
+
+        denied_overlap = analyze_deterministic(
+            TextDocument("draft.md", "The robust parser works."),
+            (RULES_BY_CODE["NAS001"],),
+            nas_allowed_words=("robust",),
+            nas_disallowed_words=("ROBUST",),
+        )
+        self.assertEqual(
+            [(finding.evidence, finding.column) for finding in denied_overlap],
+            [("robust", 5)],
+        )
+
+    def test_paragraph_limit_ignores_markdown_tables(self) -> None:
+        table = (
+            "| Field | Explanation |\n"
+            "| --- | --- |\n"
+            "| One | This is one. It is two. |\n"
+            "| Two | This is three. It is four. |\n"
+            "| Three | This is five. It is six. |\n"
+            "| Four | This is seven. It is eight. |\n"
+        )
+        findings = analyze_deterministic(
+            TextDocument("guide.md", table),
+            (RULES_BY_CODE["STE606"],),
+        )
+        self.assertEqual(findings, [])
+
+    def test_configured_ste_disallowed_words_respect_prose_masks(self) -> None:
+        document = TextDocument(
+            "technical.md",
+            '“snapshot” and `snapshot` are examples.\nThe snapshot is not approved.\n',
+        )
+        findings = analyze_deterministic(
+            document,
+            (RULES_BY_CODE["STE101"],),
+            ste_disallowed_words=("SNAPSHOT",),
+        )
+        self.assertEqual(
+            [(finding.code, finding.evidence, finding.line, finding.column) for finding in findings],
+            [("STE101", "snapshot", 2, 5)],
+        )
 
 
 if __name__ == "__main__":

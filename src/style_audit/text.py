@@ -35,18 +35,54 @@ class TextUnit:
 
 
 @dataclass(frozen=True)
+class SourceMap:
+    """Map decoded prose characters to their original Python source spans."""
+
+    source_text: str
+    line_starts: tuple[int, ...]
+    spans: tuple[tuple[int, int], ...]
+
+    def offsets(self, start: int, end: int) -> tuple[int, int]:
+        if start == end:
+            if start < len(self.spans):
+                offset = self.spans[start][0]
+            elif self.spans:
+                offset = self.spans[-1][1]
+            else:
+                offset = 0
+            return offset, offset
+        return self.spans[start][0], self.spans[end - 1][1]
+
+    def position(self, offset: int) -> tuple[int, int]:
+        line_index = bisect_right(self.line_starts, offset) - 1
+        return line_index + 1, offset - self.line_starts[line_index] + 1
+
+
+@dataclass(frozen=True)
 class TextDocument:
     path: str
     text: str
+    mask_spans: tuple[tuple[int, int], ...] = field(default=(), repr=False)
+    paragraph_breaks: tuple[int, ...] = field(default=(), repr=False)
+    section_breaks: tuple[int, ...] = field(default=(), repr=False)
+    source_map: SourceMap | None = field(default=None, repr=False)
     line_starts: tuple[int, ...] = field(init=False, repr=False)
     visible_text: str = field(init=False, repr=False)
     _code_blocks: tuple[tuple[int, int], ...] = field(init=False, repr=False)
     _quote_sentence_ends: tuple[int, ...] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.source_map is not None and len(self.source_map.spans) != len(self.text):
+            raise ValueError("source map length does not match document text")
+        if any(not 0 <= start <= end <= len(self.text) for start, end in self.mask_spans):
+            raise ValueError("mask span is outside the document")
+        if any(not 0 <= boundary <= len(self.text) for boundary in (*self.paragraph_breaks, *self.section_breaks)):
+            raise ValueError("logical boundary is outside the document")
         starts = (0, *(index + 1 for index, char in enumerate(self.text) if char == "\n"))
         object.__setattr__(self, "line_starts", starts)
         chars = list(self.text)
+        for start, end in self.mask_spans:
+            _mask_span(chars, start, end)
         open_fence: str | None = None
         code_blocks: list[tuple[int, int]] = []
         fence_start = 0
@@ -105,14 +141,14 @@ class TextDocument:
 
     @cached_property
     def _section_spans(self) -> tuple[tuple[int, int], ...]:
-        boundaries = sorted({0, len(self.text), *(start for start, _ in self.heading_spans)})
+        boundaries = sorted({0, len(self.text), *self.section_breaks, *(start for start, _ in self.heading_spans)})
         return tuple(span for start, end in zip(boundaries, boundaries[1:])
                      if (span := self._trim_span(start, end)) is not None)
 
     @cached_property
     def _paragraph_spans(self) -> tuple[tuple[int, int], ...]:
         # Use original blank lines: a fully masked quotation is not a paragraph break.
-        boundaries = {0, len(self.text)}
+        boundaries = {0, len(self.text), *self.paragraph_breaks}
         for start, end in (*self.heading_spans, *self._code_blocks):
             boundaries.update((start, end))
         boundaries.update(match.start() for match in _LIST_ITEM.finditer(self.visible_text))
@@ -154,7 +190,7 @@ class TextDocument:
         return tuple(spans)
 
     def units(self, scope: RuleScope) -> tuple[TextUnit, ...]:
-        """Return nonoverlapping logical units; masks never split a unit into fragments."""
+        """Return nonoverlapping logical units. Masks never split a unit into fragments."""
         if scope == "sentence":
             spans = self._sentence_spans
         elif scope == "paragraph":
@@ -171,13 +207,28 @@ class TextDocument:
     def position(self, offset: int) -> tuple[int, int]:
         if not 0 <= offset <= len(self.text):
             raise ValueError("text offset is outside the document")
+        if self.source_map is not None:
+            source_offset, _ = self.source_map.offsets(offset, offset)
+            return self.source_map.position(source_offset)
         line_index = bisect_right(self.line_starts, offset) - 1
         return line_index + 1, offset - self.line_starts[line_index] + 1
 
     def span(self, start: int, end: int) -> tuple[int, int, int, int]:
+        if not 0 <= start <= end <= len(self.text):
+            raise ValueError("text span is outside the document")
+        if self.source_map is not None:
+            source_start, source_end = self.source_map.offsets(start, end)
+            return (*self.source_map.position(source_start), *self.source_map.position(source_end))
         line, column = self.position(start)
         end_line, end_column = self.position(end)
         return line, column, end_line, end_column
+
+    def evidence(self, start: int, end: int) -> str:
+        """Return original source spelling, including any escapes or literal joins."""
+        if self.source_map is None:
+            return self.text[start:end]
+        source_start, source_end = self.source_map.offsets(start, end)
+        return self.source_map.source_text[source_start:source_end]
 
     def visible_occurrence(self, evidence: str, start: int = 0, end: int | None = None) -> int | None:
         """Return a visible occurrence confined to the requested original source span."""

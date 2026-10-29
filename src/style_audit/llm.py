@@ -1,18 +1,50 @@
 """Chat and decision-model editorial judgments with source-located findings."""
 
 import json
-from collections.abc import Mapping
 import math
+import os
+from collections.abc import Mapping
 from typing import Any
 
 import litellm
 
+from .config import LiteLLMConfig
+from .decision_api import DecisionAPISettings, load_decision_api
 from .models import AuditError, Diagnostic, Rule, RuleScope
 from .text import TextDocument, TextUnit
 
 
-def build_messages(document: TextDocument, rules: tuple[Rule, ...], unit: TextUnit) -> list[dict[str, str]]:
+def _ste_vocabulary_context(allowed_words: tuple[str, ...], disallowed_words: tuple[str, ...]) -> str:
+    if not allowed_words and not disallowed_words:
+        return ""
+    vocabulary = json.dumps(
+        {"allowed-words": allowed_words, "disallowed-words": disallowed_words},
+        ensure_ascii=False,
+    )
+    return (
+        " The project config supplies this STE Rule 1.1 vocabulary as JSON data: "
+        f"{vocabulary}. Treat entries as exact case-insensitive terms for lexical authorization. "
+        "Allowed terms are authorized; disallowed terms are not, and disallowed takes precedence "
+        "if a term occurs in both lists. Do not report a sentence solely because it contains a "
+        "configured disallowed term; the local STE101 check reports that term. This does not authorize "
+        "a different sense or part of speech and does not override another STE rule."
+    )
+
+
+def build_messages(
+    document: TextDocument,
+    rules: tuple[Rule, ...],
+    unit: TextUnit,
+    *,
+    ste_allowed_words: tuple[str, ...] = (),
+    ste_disallowed_words: tuple[str, ...] = (),
+) -> list[dict[str, str]]:
     rule_text = "\n".join(f"{rule.code} — {rule.name}: {rule.description}" for rule in rules)
+    vocabulary_context = (
+        _ste_vocabulary_context(ste_allowed_words, ste_disallowed_words)
+        if any(rule.code == "STE101" for rule in rules)
+        else ""
+    )
     return [
         {
             "role": "system",
@@ -29,7 +61,7 @@ def build_messages(document: TextDocument, rules: tuple[Rule, ...], unit: TextUn
                 "Return exactly one JSON object with a 'findings' array. Each finding has 'code', "
                 "'evidence' (an exact, contiguous quote from visible prose within this unit), and 'reason'; "
                 "'fix' is an optional short suggestion. Return an empty array when there are no findings. "
-                "Use only these enabled rule IDs:\n" + rule_text
+                "Use only these enabled rule IDs:\n" + rule_text + vocabulary_context
             ),
         },
         {"role": "user", "content": json.dumps({"scope": unit.scope, "text": document.visible_text[unit.start:unit.end]}, ensure_ascii=False)},
@@ -72,18 +104,28 @@ def _parse_response(content: Any, document: TextDocument, rules: tuple[Rule, ...
                 column,
                 end_line,
                 end_column,
-                evidence,
+                document.evidence(start, start + len(evidence)),
                 fix.strip(),
             )
         )
     return diagnostics
 
 
-_DECISION_MODEL = "microsoft/microsoft-decision-1"
+_DECISION_MODEL_PREFIX = "azure-maas-judge/"
+_RETIRED_DECISION_MODELS = frozenset({
+    "microsoft/microsoft-decision-1",
+    "openrouter/microsoft/microsoft-decision-1",
+})
 
 
 def _judge_decisions(
-    document: TextDocument, rules: tuple[Rule, ...], threshold: float
+    document: TextDocument,
+    rules: tuple[Rule, ...],
+    threshold: float,
+    settings: DecisionAPISettings,
+    *,
+    ste_allowed_words: tuple[str, ...] = (),
+    ste_disallowed_words: tuple[str, ...] = (),
 ) -> list[Diagnostic]:
     questions = {
         rule.code: {
@@ -98,6 +140,11 @@ def _judge_decisions(
                 "Code and quotations are masked without changing the logical unit; do not mistake gaps "
                 "for stylistic fragmentation or missing information. Do not invent missing facts. "
                 f"Rule: {rule.name}. {rule.description}"
+                + (
+                    _ste_vocabulary_context(ste_allowed_words, ste_disallowed_words)
+                    if rule.code == "STE101"
+                    else ""
+                )
             ),
             "criteria": {
                 "true": "The supplied unit clearly violates this rule, with support within this unit.",
@@ -106,52 +153,72 @@ def _judge_decisions(
         }
         for rule in rules
     }
+    units = document.units(rules[0].scope)
+    if not units:
+        return []
     findings: list[Diagnostic] = []
-    for unit in document.units(rules[0].scope):
-        evidence = document.text[unit.start:unit.end]
-        try:
+    try:
+        for unit in units:
+            evidence = document.evidence(unit.start, unit.end)
             response = litellm.systemone(
-                model=f"openrouter/{_DECISION_MODEL}",
+                model=settings.model,
                 state={"scope": unit.scope, "text": document.visible_text[unit.start:unit.end]},
                 questions=questions,
+                api_base=settings.api_base,
+                api_key=settings.api_key,
+                custom_llm_provider=settings.custom_llm_provider,
+                timeout=settings.timeout,
             )
-        except Exception as exc:
-            raise AuditError(f"LiteLLM decision provider call failed: {exc}") from exc
-        answers = getattr(response, "answers", None)
-        if not isinstance(answers, Mapping) or set(answers) != set(questions):
-            raise AuditError("LLM decision response must answer exactly the requested rule IDs")
-        for rule in rules:
-            answer = answers[rule.code]
-            probability = getattr(answer, "noul", None)
-            if getattr(answer, "type", None) != "noul" or isinstance(probability, bool) or not isinstance(probability, (int, float)) or not math.isfinite(probability) or not 0 <= probability <= 1:
-                raise AuditError(f"LLM decision answer for {rule.code} must contain a finite noul probability between 0 and 1")
-            if probability >= threshold:
-                line, column, end_line, end_column = document.span(unit.start, unit.end)
-                findings.append(Diagnostic(
-                    document.path,
-                    rule.code,
-                    f"{rule.name} ({unit.scope} scope): {rule.description} (decision probability {probability:.3f}).",
-                    line,
-                    column,
-                    end_line,
-                    end_column,
-                    evidence,
-                    "",
-                ))
+            answers = getattr(response, "answers", None)
+            if not isinstance(answers, Mapping) or set(answers) != set(questions):
+                raise AuditError("LiteLLM Decisions response must answer exactly the requested rule IDs")
+            for rule in rules:
+                answer = answers[rule.code]
+                probability = getattr(answer, "noul", None)
+                if getattr(answer, "type", None) != "noul" or isinstance(probability, bool) or not isinstance(probability, (int, float)) or not math.isfinite(probability) or not 0 <= probability <= 1:
+                    raise AuditError(f"LiteLLM Decisions answer for {rule.code} must contain a finite noul probability between 0 and 1")
+                if probability >= threshold:
+                    line, column, end_line, end_column = document.span(unit.start, unit.end)
+                    findings.append(Diagnostic(
+                        document.path,
+                        rule.code,
+                        f"{rule.name} ({unit.scope} scope): {rule.description} (decision probability {probability:.3f}).",
+                        line,
+                        column,
+                        end_line,
+                        end_column,
+                        evidence,
+                        "",
+                    ))
+    except AuditError:
+        raise
+    except Exception as exc:
+        raise AuditError(f"LiteLLM Decisions call failed ({type(exc).__name__})") from exc
     return findings
 
 
 def judge_document(
-    document: TextDocument, rules: tuple[Rule, ...], model: str, *, threshold: float = 0.8
+    document: TextDocument,
+    rules: tuple[Rule, ...],
+    model: str,
+    *,
+    threshold: float = 0.8,
+    ste_allowed_words: tuple[str, ...] = (),
+    ste_disallowed_words: tuple[str, ...] = (),
+    litellm_config: LiteLLMConfig = LiteLLMConfig(),
 ) -> list[Diagnostic]:
-    """Judge rules on their declared units; failures never return partial approval."""
+    """Judge rules on their declared units. Failures never return partial approval."""
     if not rules:
         return []
-    if not model.strip():
-        raise AuditError("LLM judging requires an explicit model, for example --model openai/gpt-4o-mini")
-    decision_model = model in {_DECISION_MODEL, f"openrouter/{_DECISION_MODEL}"}
+    if model in _RETIRED_DECISION_MODELS:
+        raise AuditError(f"retired Decision-1 model name {model!r}; use azure-maas-judge/Decision-1")
+    if model == _DECISION_MODEL_PREFIX[:-1]:
+        raise AuditError("azure-maas-judge model selection requires a model ID after the slash")
+    decision_model = model.startswith(_DECISION_MODEL_PREFIX)
+    decision_model_id = model.removeprefix(_DECISION_MODEL_PREFIX) if decision_model else None
     if decision_model and (isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or not 0 <= threshold <= 1):
         raise AuditError("LLM decision threshold must be a finite number between 0 and 1")
+    settings = load_decision_api(litellm_config, decision_model_id) if decision_model else None
     grouped: dict[RuleScope, list[Rule]] = {}
     for rule in rules:
         grouped.setdefault(rule.scope, []).append(rule)
@@ -159,16 +226,44 @@ def judge_document(
     for group in grouped.values():
         selected = tuple(group)
         if decision_model:
-            findings.extend(_judge_decisions(document, selected, threshold))
+            assert settings is not None
+            findings.extend(_judge_decisions(
+                document,
+                selected,
+                threshold,
+                settings,
+                ste_allowed_words=ste_allowed_words,
+                ste_disallowed_words=ste_disallowed_words,
+            ))
             continue
         for unit in document.units(selected[0].scope):
             try:
-                response = litellm.completion(
-                    model=model,
-                    messages=build_messages(document, selected, unit),
-                    temperature=0,
-                    response_format={"type": "json_object"},
-                )
+                kwargs: dict[str, Any] = {
+                    "model": model,
+                    "messages": build_messages(
+                        document,
+                        selected,
+                        unit,
+                        ste_allowed_words=ste_allowed_words,
+                        ste_disallowed_words=ste_disallowed_words,
+                    ),
+                    "temperature": litellm_config.temperature,
+                    "response_format": {"type": "json_object"},
+                }
+                if litellm_config.api_base:
+                    kwargs["api_base"] = litellm_config.api_base
+                if litellm_config.api_key_env:
+                    api_key = os.environ.get(litellm_config.api_key_env)
+                    if not api_key:
+                        raise AuditError(f"LiteLLM API key environment variable {litellm_config.api_key_env!r} is not set")
+                    kwargs["api_key"] = api_key
+                if litellm_config.custom_llm_provider:
+                    kwargs["custom_llm_provider"] = litellm_config.custom_llm_provider
+                if litellm_config.timeout is not None:
+                    kwargs["timeout"] = litellm_config.timeout
+                response = litellm.completion(**kwargs)
+            except AuditError:
+                raise
             except Exception as exc:
                 raise AuditError(f"LiteLLM provider call failed: {exc}") from exc
             try:

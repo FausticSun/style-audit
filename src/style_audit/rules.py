@@ -1,6 +1,7 @@
-"""Source-backed no-ai-slop and readability rule catalogs."""
+"""Canonical NAS, RDL, and ASD-STE100 rule catalogs."""
 
 from .models import Rule, RuleExample, RuleScope
+from .ste_rules import STE_RULES
 
 _SOURCE = "https://github.com/petergyang/no-ai-slop/blob/000650b156983f5159695b441477f4e63b25dc85/skills/no-ai-slop/SKILL.md"
 
@@ -400,5 +401,5 @@ _READABILITY = (
 RULES: tuple[Rule, ...] = _DETERMINISTIC + tuple(
     Rule(f"NAS{101 + index:03d}", name, "llm", description, f"{_SOURCE}#{anchor}", scope, (example,))
     for index, (name, description, anchor, scope, example) in enumerate(_SUBJECTIVE)
-) + _READABILITY
+) + _READABILITY + STE_RULES
 RULES_BY_CODE = {rule.code: rule for rule in RULES}

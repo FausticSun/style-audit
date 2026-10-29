@@ -4,16 +4,24 @@ version = "0.1.0"
 description = "A Python writing-style auditor combining deterministic NLP and LLM judgments."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["litellm>=1.106.4"]
+dependencies = ["litellm>=1.106.4", "PyYAML>=6.0"]
 
 [project.scripts]
 style-audit = "style_audit:main"
 
 [dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-bdd>=8.1",
+]
 docs = [
     "mkdocs>=1.6,<2",
     "pymdown-extensions>=10,<13",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["bdd: consumer-facing Gherkin acceptance scenarios"]
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]
