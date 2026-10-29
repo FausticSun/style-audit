@@ -1,6 +1,6 @@
 # style-audit
 
-A Python writing-style linter for Markdown, reStructuredText, and plain-text files. It combines conservative deterministic checks with optional editorial judgments through [LiteLLM](https://docs.litellm.ai/). It reports patterns to review; it does not rewrite prose, score authorship, or claim that text was written by AI.
+A Python writing-style linter for Markdown, reStructuredText, plain-text files, Gherkin feature files, and Python docstrings. It combines conservative deterministic checks with optional editorial judgments through [LiteLLM](https://docs.litellm.ai/). It reports patterns to review. It does not rewrite prose, score authorship, or claim that text was written by AI.
 
 ## Install and run
 
@@ -15,7 +15,9 @@ uv run style-audit README.md
 
 The full user and developer guide starts at [docs/index.md](docs/index.md). It covers installation, CLI behavior, `pyproject.toml`, the generated rule reference, LiteLLM privacy, and contribution workflows. The runtime rule catalog in `src/style_audit/rules.py` is the source of truth.
 
-The [dogfooding guide](docs/dogfooding.md) documents auditing this README, source documentation, and generated rule descriptions with the installed tool.
+The [dogfooding guide](docs/dogfooding.md) documents auditing this README, source documentation, generated rule descriptions, and the repository's Python docstrings with the installed tool.
+
+Run the full suite with `uv run --group dev pytest`, or only the Gherkin acceptance scenarios with `uv run --group dev pytest -m bdd -v`. See [behavioral testing](docs/contributing.md#behavioral-acceptance-scenarios) for feature files, step definitions, and isolated provider fixtures.
 
 Preview the MkDocs site locally:
 
@@ -24,7 +26,7 @@ uv sync --group docs
 uv run --group docs mkdocs serve
 ```
 
-Without paths, `style-audit` scans the current directory for `.md`, `.markdown`, `.rst`, and `.txt` files, excluding `.git`, virtual environments, build output, and Python caches. Explicit paths may name any UTF-8 text file. Pass `-` to audit standard input:
+Without paths, `style-audit` scans the current directory for `.md`, `.markdown`, `.rst`, `.txt`, `.feature`, `.py`, and `.pyi` files, excluding `.git`, virtual environments, build output, directories named `site` (including generated documentation output), and Python caches. Python inputs audit docstrings only. Other explicitly named files are treated as UTF-8 prose. Pass `-` to audit standard input:
 
 ```sh
 style-audit notes.md
@@ -34,9 +36,20 @@ style-audit docs/ --format json
 
 Exit codes: `0` no findings, `1` findings reported, `2` configuration, input, or provider error. Text diagnostics include file, line, column, rule ID, evidence, and an optional suggestion. JSON output is a versioned object with the same finding fields. Operational errors are written to stderr.
 
+## Python docstrings
+
+Python files are parsed, never executed. Module, class, function, async-function, and nested-definition docstrings are audited independently. Comments, assigned strings, later string expressions, bytes, f-strings, and template strings are not docstrings and are excluded. Strings are decoded and cleaned with Python's docstring indentation conventions. Diagnostics retain original file positions and source spelling, including escapes and adjacent literals.
+
+```sh
+style-audit src/ tests/ docs/hooks.py --select NAS00 --format json
+cat module.py | style-audit - --stdin-filename module.py --select NAS00
+```
+
+The stdin name selects Python extraction when it ends in `.py` or `.pyi`. Otherwise stdin remains prose. Local checks need no provider. LLM opt-in applies the existing rules to each docstring, never to surrounding code or comments. See [Python inputs](docs/reference/cli.md#python-docstrings) and [own-code dogfooding](docs/dogfooding.md#audit-python-docstrings).
+
 ## Rules and configuration
 
-Rule metadata lives in `src/style_audit/rules.py`. MkDocs renders [one reference page per ruleset](docs/reference/rules.md), with each rule's metadata, before/after examples, and contextual explanation together in a card. Cards use one column on mobile and two on wider browsers. The [dogfooding workflow](docs/dogfooding.md#audit-the-generated-rule-catalog) audits each ruleset's generated prose and explains how to exercise raw examples separately. `NAS` selects the no-ai-slop rules; `RDL` selects the paper-backed readability rules. Every rule has a canonical sentence, paragraph, section, or document scope, with no configuration override. Local checks run without a provider. Context-dependent rules use LiteLLM only when explicitly enabled.
+Rule metadata lives in `src/style_audit/rules.py`, with the source-located ASD-STE100 entries in `src/style_audit/ste_rules.py`. MkDocs renders [one reference page per ruleset](docs/reference/rules.md), with each rule's metadata, examples, and contextual explanation. `NAS` selects no-ai-slop, `RDL` selects the paper-backed readability rules, and `STE` selects all 53 Issue 9 Part 1 writing rules plus eight general recommendations. `STE606` and `STE801` are local checks, while the other STE entries require contextual LLM review. The ASD-STE100 Part 2 dictionary is not bundled, so the tool does not certify lexical approval or compliance. See the [STE reference](docs/reference/technical-english.md), configuration and [dogfooding workflow](docs/dogfooding.md#audit-the-generated-rule-catalog).
 
 Minimal project configuration:
 
@@ -46,29 +59,58 @@ select = ["NAS001"]
 output = "text"
 ```
 
+Apply different rules by file pattern with `[tool.style-audit.per-file-select]`, for example `"docs/**" = ["NAS00?"]` and `"src/*.py" = ["NAS001"]`. Matching entries replace global selection. Overlaps combine and ignores win. See [per-file rule selection](docs/configuration.md#per-file-rule-selection) for patterns, stdin, CLI precedence, and file-specific LLM opt-ins.
+
 See the [configuration guide](docs/configuration.md), [CLI reference](docs/reference/cli.md), and [LLM privacy guide](docs/llm.md) for selection precedence, models, and provider behavior. An LLM opt-in never overrides a deterministic-only selection.
 
-Optional OpenRouter decision review uses an explicit model and `OPENROUTER_API_KEY` in the environment:
+Optional Azure MaaS Decision-1 review uses an explicit model and the OMP registry's `azure-maas-judge` provider. `AZURE_MAAS_JUDGE_API_KEY`, when set, overrides its registry key:
 
-```sh
-style-audit draft.md --select NAS106 --model microsoft/microsoft-decision-1 --threshold 0.8
+Project-specific LiteLLM transport settings can override the OMP registry defaults. Keep the credential outside TOML and configure an environment-variable name instead:
+
+```toml
+[tool.style-audit.llm]
+enabled = true
+model = "azure-maas-judge/Decision-1"
+
+[tool.style-audit.llm.litellm]
+api_base = "https://<your-foundry-host>.services.ai.azure.com/api/projects/<project>"
+custom_llm_provider = "azure_ai"
+decision_model = "Decision-1"
+timeout = 120
+temperature = 0.0
 ```
 
-Readability review uses the same provider contract:
+`api_base`, `custom_llm_provider`, `decision_model`, and `timeout` control the Decisions request. For a Microsoft Foundry project endpoint, `custom_llm_provider = "azure_ai"` selects LiteLLM's Azure AI Decisions adapter. Style-audit passes the configured base and key explicitly. With `api_key_env` omitted, `AZURE_MAAS_JUDGE_API_KEY` overrides the OMP registry key. Otherwise, the registry's `apiKey` is used.
+
+For an OpenAI-compatible base ending in `/openai/v1`, set `custom_llm_provider = "openai"`. LiteLLM sends the request to `/openai/v1/decisions`. The OMP registry's `api: openrouter-decisions` identifies the Decisions interface for the model entry. It does not send requests through OpenRouter.
+
+`temperature` controls chat completions. `api_key_env` is a variable name, never a secret value.
 
 ```sh
-style-audit draft.md --select RDL --model microsoft/microsoft-decision-1 --threshold 0.8
+style-audit draft.md --select NAS106 --model azure-maas-judge/Decision-1 --threshold 0.8
+```
+
+Readability review uses the same Decisions API:
+
+```sh
+style-audit draft.md --select RDL --model azure-maas-judge/Decision-1 --threshold 0.8
 ```
 
 The readability rules judge interpretation difficulty in English sentences, not AI authorship or a readability score. They preserve familiar constructions and do not pretend to measure n-gram frequency or dependency statistics without reference data. See the [readability guide](docs/reference/readability.md).
 
-The equivalent model name is `openrouter/microsoft/microsoft-decision-1`. Both decision and chat review group selected LLM rules by their registered scope and make one request per eligible unit in each selected scope, containing only that unit's masked text and matching rules. Probabilities greater than or equal to the threshold produce decision findings anchored to the complete original unit, with no generated fix. The default threshold is `0.8`; `--threshold` overrides `[tool.style-audit.llm].threshold`. Other LiteLLM models, such as `openai/gpt-4o-mini`, use chat-based review with exact visible quotes within the current unit and no probability filtering.
+The OMP `openrouter-decisions` registry value is validated for the Azure MaaS model entry. Style-audit uses LiteLLM's OpenAI Decisions adapter with the explicitly configured Azure endpoint and key.
 
-Remote review may incur charges; the selected scopes and their unit counts determine request volume. Masking preserves logical units but is not sensitive-data redaction. The [LLM guide](docs/llm.md) explains segmentation, privacy, validation, and limitations; the [dogfooding guide](docs/dogfooding.md) separates historical pre-scope observations, including an authentication failure, from current review evidence.
+Both decision and chat review group selected LLM rules by their registered scope and make one request per eligible unit in each selected scope, containing only that unit's masked text and matching rules. Decision probabilities greater than or equal to the threshold produce findings anchored to the complete original unit, with no generated fix. The default threshold is `0.8`. The `--threshold` option overrides `[tool.style-audit.llm].threshold`.
+
+Other LiteLLM models, such as `openai/gpt-4o-mini`, use chat-based review with exact visible quotes within the current unit and no probability filtering.
+
+Remote review may incur charges. The selected scopes and their unit counts determine request volume. Masking preserves logical units but is not sensitive-data redaction. The [LLM guide](docs/llm.md) explains segmentation, privacy, validation, and limitations. The [dogfooding guide](docs/dogfooding.md) separates historical pre-scope observations, including an authentication failure, from current review evidence.
 
 
 ## Source and attribution
 
-The initial rule inventory adapts the editorial guidance in [Peter Yang's `no-ai-slop`](https://github.com/petergyang/no-ai-slop), pinned to commit [`000650b`](https://github.com/petergyang/no-ai-slop/commit/000650b156983f5159695b441477f4e63b25dc85). The upstream project is MIT-licensed; its required license notice is in [`third_party/no-ai-slop-LICENSE`](third_party/no-ai-slop-LICENSE). Style-audit's conservative deterministic findings implement only literal, source-backed checks; contextual guidance is kept in LLM judgments rather than brittle word bans.
+The initial rule inventory adapts the editorial guidance in [Peter Yang's `no-ai-slop`](https://github.com/petergyang/no-ai-slop), pinned to commit [`000650b`](https://github.com/petergyang/no-ai-slop/commit/000650b156983f5159695b441477f4e63b25dc85). The upstream project is MIT-licensed. Its required license notice is in [`third_party/no-ai-slop-LICENSE`](third_party/no-ai-slop-LICENSE). Style-audit's conservative deterministic findings implement only literal, source-backed checks. Contextual guidance is kept in LLM judgments rather than brittle word bans.
 
 The `RDL` rules adapt Thomas Hikaru Clark, Matias B. Martin, and Kyle Mahowald's [“Why is AI-generated language so hard to understand?”](https://arxiv.org/html/2610.29162v1), arXiv:2610.29162v1 (21 October 2026), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The adaptation uses contextual lint judgments rather than reproducing the paper's corpus measurements.
+
+The `STE` rules are original summaries and illustrations of ASD-STE100 Issue 9 Part 1, covering 53 writing rules and eight general recommendations. The [technical-English reference](docs/reference/technical-english.md) documents source citations, copyright and trademark limits, and the absence of the controlled Part 2 dictionary. The project is independent and is not endorsed by ASD.

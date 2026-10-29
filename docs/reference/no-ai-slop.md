@@ -17,7 +17,7 @@ style-audit draft.md --select NAS00
 To include the no-ai-slop LLM rules, select the ruleset and provide a model explicitly:
 
 ```sh
-style-audit draft.md --select NAS --model microsoft/microsoft-decision-1 --threshold 0.8
+style-audit draft.md --select NAS --model azure-maas-judge/Decision-1 --threshold 0.8
 ```
 
 `NAS1` selects only its LLM rules. Combine rulesets with `--select NAS00,RDL` for local no-ai-slop checks plus [readability review](readability.md). See [selection and ignore precedence](../configuration.md#selection-ignoring-and-llm-opt-in), [LLM review and privacy](../llm.md), and the [ruleset overview](rules.md).

@@ -49,6 +49,7 @@ nav:
       - Rulesets: reference/rules.md
       - No AI slop: reference/no-ai-slop.md
       - Readability: reference/readability.md
+      - Simplified Technical English: reference/technical-english.md
   - Development:
       - Architecture: architecture.md
       - Contributing: contributing.md

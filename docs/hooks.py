@@ -5,6 +5,7 @@ from style_audit.rules import RULES
 _RULESETS = {
     "NAS": ("No AI slop", "reference/no-ai-slop.md"),
     "RDL": ("Readability", "reference/readability.md"),
+    "STE": ("Simplified Technical English", "reference/technical-english.md"),
 }
 
 
@@ -17,7 +18,7 @@ def _sample(text: str) -> str:
 
 
 def _rule_reference(ruleset: str, *, cards: bool = False) -> str:
-    """Render one ruleset; omit layout markup when auditing its prose."""
+    """Render one ruleset. Omit layout markup when auditing its prose."""
     title, _ = _RULESETS[ruleset]
     rules = tuple(rule for rule in RULES if rule.code.startswith(ruleset))
     rows = [] if cards else [f"# {title}", ""]
