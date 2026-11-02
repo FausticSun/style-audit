@@ -7,11 +7,17 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from style_audit.cli import build_parser, run
+from style_audit.cli import CLIOptions, build_cli, run
 from style_audit.deterministic import analyze_deterministic
 from style_audit.docstrings import extract_docstrings
 from style_audit.marimo_docs import extract_markdown_cells
 from style_audit.rules import RULES_BY_CODE
+
+
+def _parse_options(arguments: list[str]) -> CLIOptions:
+    command = build_cli()
+    with command.make_context("style-audit", list(arguments)) as context:
+        return CLIOptions(**context.params)
 
 
 class MarimoMarkdownTests(unittest.TestCase):
@@ -122,7 +128,7 @@ class MarimoMarkdownTests(unittest.TestCase):
             (root / "pyproject.toml").write_text("[tool.style-audit]\n", encoding="utf-8")
             path = root / "report.py"
             path.write_text(source, encoding="utf-8")
-            args = build_parser().parse_args([
+            args = _parse_options([
                 str(path), "--select", "NAS106", "--model", "openai/test-model", "--format", "json",
             ])
             with patch("style_audit.llm.litellm.completion", return_value=response) as completion:

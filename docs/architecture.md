@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart TD
-    A[cli.main / argparse] --> B[load_config and expand rule selectors]
+    A[cli.main / Click] --> B[load_config and expand rule selectors]
     B --> C[discover paths or read stdin]
     C --> P{Python input?}
     P -->|yes| Q{Marimo app?}
@@ -25,7 +25,7 @@ flowchart TD
 ## Modules and contracts
 
 - `style_audit.__init__.main()` exports the installed `style-audit` command. `style_audit.__main__` provides `python -m style_audit`.
-- `cli.build_parser()` defines arguments, and `cli.run()` loads settings, expands rule IDs, prefixes, and globs, gathers documents, plans each file's effective rules and model requirements, and returns an exit code plus rendered output. Matching per-file selections replace global selection with their union. CLI selection replaces both, and combined ignores always win. Plans are shared by all extracted documents of a file and validated before any provider call. `cli.main()` writes operational errors to stderr and maps them to status `2`.
+- `cli.build_cli()` defines the Click command, and `cli.run()` loads settings, expands rule IDs, prefixes, and globs, gathers documents, plans each file's effective rules and model requirements, and returns an exit code plus rendered output. Matching per-file selections replace global selection with their union. CLI selection replaces both, and combined ignores always win. Plans are shared by all extracted documents of a file and validated before any provider call. `cli.main()` writes operational errors to stderr and maps them to status `2`.
 - `config.AuditConfig` stores the validated settings, including immutable `per_file_select` entries and `llm_threshold` (default `0.8`). `config.load_config()` discovers or opens TOML. The current working directory anchors discovery, while the TOML directory anchors per-file path matching. The CLI applies `--threshold` precedence and rejects effective nonfinite or out-of-range values.
 - `rules.RULES` is the canonical ordered catalog. It contains the unchanged `NAS` sequence, the explicitly numbered `RDL` readability rules, and 61 ASD-STE100 Part 1 entries assembled from `ste_rules.STE_RULES`. `STE` IDs cover all 53 Issue 9 writing rules and eight general recommendations. The supplied PDF's Part 2 controlled dictionary is not ingested by this catalog. Two measurable entries (`STE606`, `STE801`) use deterministic checks, and the rest use contextual LLM review. Prefix selection separates rulesets without another dispatch mechanism.
 - `Rule` records the diagnostic ID, name, engine, required `scope`, description, source, and required `examples` tuple. Each frozen `RuleExample` records `before`, `after`, and `explanation`. Examples are documentation metadata, not model-prompt additions or automatic fixes. `RULES_BY_CODE` indexes IDs.
@@ -37,12 +37,12 @@ flowchart TD
 - `marimo_docs.extract_markdown_cells(path, source)` recognizes imported `marimo.App` calls, then extracts direct `mo.md()` string literals and static f-string portions without executing cells. Interpolations and nonliteral arguments are omitted. Each Markdown call becomes a source-mapped `TextDocument`; syntax or mapping errors raise `AuditError` without raw-source fallback.
 - `gherkin.document_from_feature(path, source)` masks Gherkin syntax and fixtures while preserving source positions and step boundaries. It does not load step definitions or execute scenarios.
 - `deterministic.analyze_deterministic(document, rules=None)` applies selected local checks to their registered units, retaining exact token or emoji locations. The standalone default runs all deterministic rules. The CLI passes its selected deterministic rules.
-- `llm.judge_document(document, rules, model, *, threshold=0.8, litellm_config=...)` groups selected LLM rules by scope and dispatches `azure-maas-judge/Decision-1` through LiteLLM's Decisions `systemone` API. Other model names use scoped LiteLLM chat completions. `build_messages(document, rules, unit)` builds chat prompts for the current unit and matching-scope rules.
+- `llm.judge_document(document, rules, model, *, threshold=0.8, litellm_config=...)` groups selected LLM rules by scope and dispatches Azure MaaS and `openrouter/microsoft/microsoft-decision-1` through LiteLLM's Decisions `systemone` API. Other model names use scoped LiteLLM chat completions. `build_messages(document, rules, unit)` builds chat prompts for the current unit and matching-scope rules.
 - `reporting` sorts findings and renders the text or version-1 JSON schema.
 
 ## Judging backends
 
-Decision judging calls LiteLLM's `systemone` API with the configured `api_base`, API key, `custom_llm_provider` (default `openai`), and optional timeout. The OMP provider `azure-maas-judge` uses `api: openrouter-decisions` and lists the model ID. That API identifier selects the Decisions interface, not the OpenRouter service.
+Decision judging calls LiteLLM's `systemone` API. The OpenRouter selector `openrouter/microsoft/microsoft-decision-1` uses `OPENROUTER_API_KEY` and OpenRouter's `/alpha/decisions` endpoint, with `https://openrouter.ai/api` as the default API base. The Azure MaaS path uses its configured `api_base`, API key, and `custom_llm_provider` (default `openai`); the OMP provider `azure-maas-judge` uses `api: openrouter-decisions` and lists the model ID. That API identifier selects the Decisions interface, not the OpenRouter service.
 
 For a Microsoft Foundry project endpoint, set `custom_llm_provider = "azure_ai"`. LiteLLM routes it to `/providers/microsoft/v1/systemone`. An OpenAI-compatible base ending `/openai/v1` uses `custom_llm_provider = "openai"` and the `/openai/v1/decisions` route. Style-audit passes the configured base and key, and LiteLLM validates Decisions responses. Other models retain LiteLLM chat-completion judging.
 

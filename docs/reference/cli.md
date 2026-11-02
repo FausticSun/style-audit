@@ -1,6 +1,6 @@
 # CLI and output reference
 
-Run `style-audit --help` for the installed parser's option summary and `style-audit --version` for the package version. The equivalent module entry point is `python -m style_audit`.
+Run `style-audit --help` for the installed command's option summary and `style-audit --version` for the package version. The equivalent module entry point is `python -m style_audit`.
 
 ## Inputs and discovery
 
@@ -67,7 +67,7 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 | `--ignore RULE[,RULE]` | Suppress IDs, prefixes, or globs and add them to configured `ignore`. Repeatable. |
 | `--format text\|json` | Override configured report format. |
 | `--llm` | Explicitly enable LLM rules among the currently selected rules. |
-| `--model MODEL` | Select the configured Azure MaaS Decision-1 model or a LiteLLM chat model and opt into judging selected LLM rules. |
+| `--model MODEL` | Select OpenRouter Microsoft Decision-1, an Azure MaaS Decisions model, or a LiteLLM chat model and opt into judging selected LLM rules. |
 | `--threshold FLOAT` | Override the decision-probability threshold (default `0.8`). The value must be finite and in `[0, 1]`. It does not enable judging. |
 | `--stdin-filename NAME` | Set the stdin path for per-file selection; `.py` selects Marimo Markdown cells or Python docstrings, `.pyi` selects docstrings, and `.feature` selects Gherkin processing. |
 | `--version` | Print the package version. |
@@ -81,12 +81,12 @@ Selecting an LLM rule explicitly enables the judge for that file, including thro
 
 `STE` selects all 61 ASD-STE100 entries, including recommendations. `STE606` and `STE801` are the local paragraph-count and semicolon rules. Markdown table blocks are not paragraphs and do not count toward the STE606 six-sentence limit. STE801 still checks semicolons in table cells. Combine selectors with `--select NAS00,RDL,STE606,STE801`, or quote globs such as `--select 'NAS00?'` and `--ignore 'NAS00[23]'`. Every selector must match a registered rule.
 
-Use `azure-maas-judge/Decision-1` for Azure MaaS Decisions judging. Configure its API base and provider in the OMP model registry or override them with `[tool.style-audit.llm.litellm]`. API keys come from the registry or a named environment variable, never a raw TOML value. Other model names use LiteLLM chat judging. An explicit model is required whenever selected LLM rules are judged. There is no default model.
+Use `openrouter/microsoft/microsoft-decision-1` for OpenRouter Decisions judging. Set `OPENROUTER_API_KEY`; LiteLLM sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`, not chat completions. No custom endpoint configuration is required. The `azure-maas-judge/<model-id>` selector remains available for Azure MaaS Decisions judging through the OMP registry or `[tool.style-audit.llm.litellm]`. Other model names use LiteLLM chat judging. An explicit model is required whenever selected LLM rules are judged. There is no default model.
 
 Example:
 
 ```sh
-style-audit draft.md --select NAS106 --model azure-maas-judge/Decision-1 --threshold 0.9
+style-audit draft.md --select NAS106 --model openrouter/microsoft/microsoft-decision-1 --threshold 0.9
 ```
 
 `--threshold` overrides `[tool.style-audit.llm].threshold`. A decision probability equal to the threshold is included, and below-threshold answers are excluded only after validation. Non-numeric, nonfinite, or out-of-range CLI values fail with exit `2`. The setting is validated but does not filter chat findings. See [configuration](../configuration.md) for TOML types.

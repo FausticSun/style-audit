@@ -1,12 +1,14 @@
 """Command-line entry point and path discovery."""
 
-import argparse
+from collections.abc import Sequence
+from dataclasses import dataclass
 import fnmatch
-import os
 import math
+import os
 from pathlib import Path
 import sys
-from collections.abc import Sequence
+
+import click
 
 from .config import AuditConfig, load_config
 from .deterministic import analyze_deterministic
@@ -123,25 +125,92 @@ def _collect(paths: Sequence[str], config: AuditConfig, stdin_text: str | None, 
     return documents
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="style-audit",
-        description="Find source-backed writing-style patterns without guessing who wrote the text.",
+@dataclass(frozen=True)
+class CLIOptions:
+    paths: tuple[str, ...]
+    config: Path | None
+    select: tuple[str, ...]
+    ignore: tuple[str, ...]
+    format: str | None
+    llm: bool
+    model: str | None
+    threshold: float | None
+    stdin_filename: str
+
+
+def build_cli() -> click.Command:
+    @click.command(
+        name="style-audit",
+        help="Find source-backed writing-style patterns without guessing who wrote the text.",
+        context_settings={"help_option_names": ["-h", "--help"]},
     )
-    parser.add_argument("paths", nargs="*", help="UTF-8 prose files, Python docstrings or Marimo Markdown cells, Gherkin feature files, directories, or - for stdin (default: current directory)")
-    parser.add_argument("--config", type=Path, help="read configuration from this pyproject.toml or directory")
-    parser.add_argument("--select", action="append", default=[], metavar="RULE[,RULE]", help="select rule IDs, prefixes, or globs; replaces configured global and per-file selection")
-    parser.add_argument("--ignore", action="append", default=[], metavar="RULE[,RULE]", help="ignore rule IDs, prefixes, or globs")
-    parser.add_argument("--format", choices=("text", "json"), help="output format (default: project setting or text)")
-    parser.add_argument("--llm", action="store_true", help="explicitly enable LLM judgments")
-    parser.add_argument("--model", help="LiteLLM model for enabled editorial judgments")
-    parser.add_argument("--threshold", type=float, help="decision probability threshold from 0 to 1 (default: project setting or 0.8)")
-    parser.add_argument("--stdin-filename", default="<stdin>", help="input name for stdin; .py extracts Marimo Markdown cells or Python docstrings, .pyi extracts docstrings, and .feature parses Gherkin")
-    parser.add_argument("--version", action="version", version="style-audit 0.1.0")
-    return parser
+    @click.argument("paths", nargs=-1)
+    @click.option(
+        "--config",
+        type=click.Path(path_type=Path),
+        help="read configuration from this pyproject.toml or directory",
+    )
+    @click.option(
+        "--select",
+        multiple=True,
+        metavar="RULE[,RULE]",
+        help="select rule IDs, prefixes, or globs; replaces configured global and per-file selection",
+    )
+    @click.option(
+        "--ignore",
+        multiple=True,
+        metavar="RULE[,RULE]",
+        help="ignore rule IDs, prefixes, or globs",
+    )
+    @click.option(
+        "--format",
+        type=click.Choice(("text", "json")),
+        help="output format (default: project setting or text)",
+    )
+    @click.option("--llm", is_flag=True, help="explicitly enable LLM judgments")
+    @click.option("--model", help="LiteLLM model for enabled editorial judgments")
+    @click.option(
+        "--threshold",
+        type=click.FloatRange(min=0, max=1),
+        help="decision probability threshold from 0 to 1 (default: project setting or 0.8)",
+    )
+    @click.option(
+        "--stdin-filename",
+        default="<stdin>",
+        show_default=True,
+        help="input name for stdin; .py extracts Marimo Markdown cells or Python docstrings, "
+        ".pyi extracts docstrings, and .feature parses Gherkin",
+    )
+    @click.version_option(
+        version="0.1.0",
+        prog_name="style-audit",
+        message="%(prog)s %(version)s",
+    )
+    def command(
+        paths: tuple[str, ...],
+        config: Path | None,
+        select: tuple[str, ...],
+        ignore: tuple[str, ...],
+        format: str | None,
+        llm: bool,
+        model: str | None,
+        threshold: float | None,
+        stdin_filename: str,
+    ) -> int:
+        options = CLIOptions(paths, config, select, ignore, format, llm, model, threshold, stdin_filename)
+        try:
+            exit_code, rendered = run(options)
+        except (AuditError, OSError) as exc:
+            click.echo(f"style-audit: error: {exc}", err=True)
+            return 2
+        if rendered:
+            click.echo(rendered, nl=False)
+        return exit_code
+
+    return command
 
 
-def run(args: argparse.Namespace, stdin_text: str | None = None, cwd: Path | None = None) -> tuple[int, str]:
+def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None) -> tuple[int, str]:
     working_directory = (cwd or Path.cwd()).resolve()
     config = load_config(working_directory, args.config)
     selection = _csv(args.select, "--select") if args.select else config.select
@@ -204,13 +273,16 @@ def run(args: argparse.Namespace, stdin_text: str | None = None, cwd: Path | Non
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_intermixed_args(argv)
+    command = build_cli()
     try:
-        exit_code, stdout = run(args)
-    except (AuditError, OSError) as exc:
-        print(f"style-audit: error: {exc}", file=sys.stderr)
-        return 2
-    if stdout:
-        sys.stdout.write(stdout)
-    return exit_code
+        result = command.main(
+            args=list(argv) if argv is not None else None,
+            prog_name="style-audit",
+            standalone_mode=False,
+        )
+    except click.ClickException as exc:
+        exc.show()
+        return exc.exit_code
+    except click.exceptions.Exit as exc:
+        return exc.exit_code
+    return int(result or 0)

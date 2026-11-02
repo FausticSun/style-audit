@@ -8,9 +8,16 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from style_audit.cli import build_parser, main, run
+from click.testing import CliRunner
+from style_audit.cli import CLIOptions, build_cli, main, run
 from style_audit.config import load_config
 from style_audit.models import AuditError
+
+
+def _parse_options(arguments: list[str]) -> CLIOptions:
+    command = build_cli()
+    with command.make_context("style-audit", list(arguments)) as context:
+        return CLIOptions(**context.params)
 
 
 class ConfigTests(unittest.TestCase):
@@ -124,7 +131,7 @@ class CliTests(unittest.TestCase):
                 "Feature: robust generated page.\n", encoding="utf-8"
             )
 
-            args = build_parser().parse_args([str(root)])
+            args = _parse_options([str(root)])
             code, stdout = run(args, cwd=root)
             self.assertEqual(code, 1)
             report = json.loads(stdout)
@@ -135,11 +142,11 @@ class CliTests(unittest.TestCase):
     def test_clean_stdin_and_explicit_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            args = build_parser().parse_args(["-", "--stdin-filename", "draft.txt"])
+            args = _parse_options(["-", "--stdin-filename", "draft.txt"])
             code, stdout = run(args, "Ordinary clear prose.", root)
             self.assertEqual((code, stdout), (0, ""))
 
-            args = build_parser().parse_args(["-", "--select", "NAS002"])
+            args = _parse_options(["-", "--select", "NAS002"])
             code, stdout = run(args, "# 🌿 Heading", root)
             self.assertEqual(code, 1)
             self.assertIn("NAS002", stdout)
@@ -147,19 +154,19 @@ class CliTests(unittest.TestCase):
     def test_input_errors_and_llm_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            args = build_parser().parse_args(["missing.md"])
+            args = _parse_options(["missing.md"])
             with self.assertRaisesRegex(AuditError, "does not exist"):
                 run(args, cwd=root)
 
-            args = build_parser().parse_args(["-", "--select", "NAS101"])
+            args = _parse_options(["-", "--select", "NAS101"])
             with self.assertRaisesRegex(AuditError, "requires an explicit model"):
                 run(args, "Some prose.", root)
 
-            args = build_parser().parse_args(["-", "--select", "NAS001"])
+            args = _parse_options(["-", "--select", "NAS001"])
             code, _ = run(args, "The robust parser.", root)
             self.assertEqual(code, 1)
 
-            args = build_parser().parse_args(["-", "--ignore", "NAS999"])
+            args = _parse_options(["-", "--ignore", "NAS999"])
             with self.assertRaisesRegex(AuditError, "unknown rule selector"):
                 run(args, "Text", root)
 
@@ -189,7 +196,7 @@ class CliTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch("style_audit.llm.litellm.systemone", side_effect=provider):
-                code, output = run(build_parser().parse_args(["-"]), source, root)
+                code, output = run(_parse_options(["-"]), source, root)
             self.assertEqual(code, 1)
             self.assertEqual(
                 [(item["code"], item["line"], item["column"], item["evidence"])
@@ -198,7 +205,7 @@ class CliTests(unittest.TestCase):
             )
 
             with patch("style_audit.llm.litellm.systemone") as provider_call:
-                code, output = run(build_parser().parse_args(["-", "--select", "NAS001"]), source, root)
+                code, output = run(_parse_options(["-", "--select", "NAS001"]), source, root)
             self.assertEqual(code, 1)
             self.assertEqual(
                 [(item["code"], item["line"], item["column"]) for item in json.loads(output)["findings"]],
@@ -207,7 +214,7 @@ class CliTests(unittest.TestCase):
             provider_call.assert_not_called()
 
             with patch("style_audit.llm.litellm.systemone") as provider_call:
-                code, output = run(build_parser().parse_args(["-", "--ignore", "RDL"]), source, root)
+                code, output = run(_parse_options(["-", "--ignore", "RDL"]), source, root)
             self.assertEqual((code, json.loads(output)["findings"]), (0, []))
             provider_call.assert_not_called()
 
@@ -237,7 +244,7 @@ class CliTests(unittest.TestCase):
                     options = ["-", "--format", "json"]
                     if override is not None:
                         options.extend(["--threshold", str(override)])
-                    args = build_parser().parse_args(options)
+                    args = _parse_options(options)
                     with patch("style_audit.llm.litellm.systemone", return_value=self._decision_response(0.65)):
                         code, stdout = run(args, "Visible paragraph.", root)
                     self.assertEqual(code, expected_code)
@@ -252,7 +259,7 @@ class CliTests(unittest.TestCase):
             root = Path(temporary)
             for threshold, probability, expected_code in ((0, 0, 1), (1, 0, 0), (1, 1, 1)):
                 with self.subTest(threshold=threshold, probability=probability):
-                    args = build_parser().parse_args([
+                    args = _parse_options([
                         "-", "--select", "NAS106", "--model", "azure-maas-judge/Decision-1",
                         "--threshold", str(threshold), "--format", "json",
                     ])
@@ -262,29 +269,29 @@ class CliTests(unittest.TestCase):
                     self.assertEqual(len(json.loads(stdout)["findings"]), expected_code)
 
     def test_cli_threshold_rejects_non_numeric_input(self) -> None:
+        runner = CliRunner()
         for value in ("true", "false", "not-a-number"):
             with self.subTest(value=value):
-                with patch("sys.stderr", new_callable=StringIO) as stderr:
-                    with self.assertRaises(SystemExit) as raised:
-                        build_parser().parse_args(["-", f"--threshold={value}"])
-                self.assertEqual(raised.exception.code, 2)
-                self.assertIn("--threshold", stderr.getvalue())
+                result = runner.invoke(build_cli(), ["-", f"--threshold={value}"])
+                self.assertEqual(result.exit_code, 2)
+                self.assertIn("--threshold", result.output)
 
     def test_invalid_cli_thresholds_fail_before_any_provider_call(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            for value in ("nan", "inf", "-inf", "-0.01", "1.01"):
-                with self.subTest(value=value):
-                    args = build_parser().parse_args([
-                        "-", "--select", "NAS106", "--model", "azure-maas-judge/Decision-1",
-                        f"--threshold={value}",
-                    ])
-                    with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                        with patch("style_audit.llm.litellm.completion") as chat_provider:
-                            with self.assertRaisesRegex(AuditError, "threshold"):
-                                run(args, "Visible paragraph.", root)
-                    decision_provider.assert_not_called()
-                    chat_provider.assert_not_called()
+        for value in ("nan", "inf", "-inf", "-0.01", "1.01"):
+            with self.subTest(value=value):
+                with patch("sys.stdin", StringIO("Visible paragraph.\n")):
+                    with patch("sys.stdout", new_callable=StringIO):
+                        with patch("sys.stderr", new_callable=StringIO) as stderr:
+                            with patch("style_audit.llm.litellm.systemone") as decision_provider:
+                                with patch("style_audit.llm.litellm.completion") as chat_provider:
+                                    code = main([
+                                        "-", "--select", "NAS106", "--model", "azure-maas-judge/Decision-1",
+                                        f"--threshold={value}",
+                                    ])
+                self.assertEqual(code, 2)
+                self.assertIn("--threshold", stderr.getvalue())
+                decision_provider.assert_not_called()
+                chat_provider.assert_not_called()
 
     def test_invalid_threshold_configuration_is_not_hidden_by_cli_override(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -292,7 +299,7 @@ class CliTests(unittest.TestCase):
             (root / "pyproject.toml").write_text(
                 "[tool.style-audit.llm]\nthreshold = true\n", encoding="utf-8"
             )
-            args = build_parser().parse_args(["-", "--select", "NAS001", "--threshold", "0.5"])
+            args = _parse_options(["-", "--select", "NAS001", "--threshold", "0.5"])
             with self.assertRaisesRegex(AuditError, "threshold"):
                 run(args, "Ordinary prose.", root)
 
@@ -314,7 +321,7 @@ class CliTests(unittest.TestCase):
                     ["--llm", "--model", "azure-maas-judge/Decision-1", "--threshold", "0"],
                 ):
                     with self.subTest(configured=configured, flags=flags):
-                        args = build_parser().parse_args([
+                        args = _parse_options([
                             "-", "--select", "NAS001", "--format", "json", *flags,
                         ])
                         with patch("style_audit.llm.litellm.systemone") as decision_provider:
@@ -380,7 +387,7 @@ class CliTests(unittest.TestCase):
             (excluded / "invalid.py").write_text("def broken(:\n", encoding="utf-8")
             with patch("style_audit.llm.litellm.systemone") as decision_provider:
                 with patch("style_audit.llm.litellm.completion") as chat_provider:
-                    code, output = run(build_parser().parse_args([str(root)]), cwd=root)
+                    code, output = run(_parse_options([str(root)]), cwd=root)
             self.assertEqual(code, 1)
             self.assertEqual(
                 [(finding["path"], finding["code"], finding["evidence"], finding["line"], finding["column"])
@@ -408,7 +415,7 @@ class CliTests(unittest.TestCase):
             feature.write_text(source, encoding="utf-8")
             with patch("style_audit.llm.litellm.systemone") as decision_provider:
                 code, output = run(
-                    build_parser().parse_args([
+                    _parse_options([
                         str(feature), "--select", "NAS001", "--format", "json",
                     ]),
                     cwd=root,
@@ -442,7 +449,7 @@ class CliTests(unittest.TestCase):
                  ("NAS003", "serves as", 1, 23)),
             ):
                 with self.subTest(options=options):
-                    code, output = run(build_parser().parse_args([str(root), *options]), cwd=root)
+                    code, output = run(_parse_options([str(root), *options]), cwd=root)
                     self.assertEqual(code, 1)
                     findings = json.loads(output)["findings"]
                     self.assertEqual(
@@ -468,7 +475,7 @@ class CliTests(unittest.TestCase):
                         path = root / f"input{suffix}"
                         path.write_text(source, encoding="utf-8")
                         options = [str(path)] if mode == "file" else ["-", "--stdin-filename", path.name]
-                        code, output = run(build_parser().parse_args([
+                        code, output = run(_parse_options([
                             *options, "--select", "NAS001", "--format", "json",
                         ]), source if mode == "stdin" else None, root)
                         self.assertEqual(code, 1)
@@ -487,7 +494,7 @@ class CliTests(unittest.TestCase):
                 with self.subTest(filename=filename):
                     with patch("style_audit.llm.litellm.systemone") as decision_provider:
                         with patch("style_audit.llm.litellm.completion") as chat_provider:
-                            code, output = run(build_parser().parse_args([
+                            code, output = run(_parse_options([
                                 "-", "--stdin-filename", filename, "--select", "NAS001,NAS106",
                                 "--model", "azure-maas-judge/Decision-1", "--format", "json",
                             ] if expected_code == 0 else [
@@ -548,7 +555,7 @@ class CliTests(unittest.TestCase):
             path.write_bytes(source.encode("utf-8"))
             with patch("style_audit.llm.litellm.systemone") as decision_provider:
                 with patch("style_audit.llm.litellm.completion") as chat_provider:
-                    code, output = run(build_parser().parse_args([
+                    code, output = run(_parse_options([
                         str(path), "--select", "NAS001", "--format", "json",
                     ]), cwd=root)
             self.assertEqual(code, 1)
@@ -586,7 +593,7 @@ class CliTests(unittest.TestCase):
 
                     inputs = [str(path)] if mode == "file" else ["-", "--stdin-filename", path.name]
                     with patch("style_audit.llm.litellm.systemone", side_effect=provider):
-                        code, output = run(build_parser().parse_args([
+                        code, output = run(_parse_options([
                             *inputs, "--select", "NAS101", "--model", "azure-maas-judge/Decision-1",
                             "--format", "json",
                         ]), source if mode == "stdin" else None, root)
@@ -629,7 +636,7 @@ class CliTests(unittest.TestCase):
                 ))])
 
             with patch("style_audit.llm.litellm.completion", side_effect=provider):
-                code, output = run(build_parser().parse_args([
+                code, output = run(_parse_options([
                     "-", "--stdin-filename", "private.py", "--select", "NAS106",
                     "--model", "openai/test-model", "--format", "json",
                 ]), source, root)
@@ -687,7 +694,7 @@ class CliTests(unittest.TestCase):
             (root / "src" / "api.py").write_text('"""' + text + '"""\n', encoding="utf-8")
             for cwd in (root, nested):
                 with self.subTest(cwd=cwd):
-                    code, output = run(build_parser().parse_args([str(root)]), cwd=cwd)
+                    code, output = run(_parse_options([str(root)]), cwd=cwd)
                     self.assertEqual(code, 1)
                     self.assertEqual(sorted(
                         ((cwd / item["path"]).relative_to(root).as_posix(), item["code"])
@@ -720,13 +727,13 @@ class CliTests(unittest.TestCase):
                         options = ["-", "--stdin-filename", filename]
                         if override:
                             options.extend(["--select", "NAS00?", "--ignore", "NAS00[23]"])
-                        code, output = run(build_parser().parse_args(options), source, root)
+                        code, output = run(_parse_options(options), source, root)
                         expected_codes = ["NAS001"] if override else expected
                         self.assertEqual(code, 1 if expected_codes else 0)
                         self.assertEqual([item["code"] for item in json.loads(output)["findings"]], expected_codes)
             other_cwd = root / "other"
             other_cwd.mkdir()
-            code, output = run(build_parser().parse_args([
+            code, output = run(_parse_options([
                 "-", "--stdin-filename", str(root / "docs" / "virtual.md"), "--config", str(config),
             ]), text, other_cwd)
             self.assertEqual(code, 1)
@@ -756,19 +763,19 @@ class CliTests(unittest.TestCase):
             python = root / "src" / "api.py"
             python.write_text('"""A robust PRIVATE parser."""\n', encoding="utf-8")
             with patch("style_audit.llm.litellm.systemone", side_effect=provider):
-                code, output = run(build_parser().parse_args([str(root)]), cwd=root)
+                code, output = run(_parse_options([str(root)]), cwd=root)
             self.assertEqual(code, 1)
             self.assertEqual(sorted((item["path"], item["code"]) for item in json.loads(output)["findings"]), [
                 ("local.md", "NAS001"), ("review/draft.md", "RDL104"), ("src/api.py", "NAS001"),
             ])
             config.write_text(settings, encoding="utf-8")
             with patch("style_audit.llm.litellm.systemone", side_effect=AssertionError("Private files reached a provider")):
-                code, output = run(build_parser().parse_args([str(local), str(python)]), cwd=root)
+                code, output = run(_parse_options([str(local), str(python)]), cwd=root)
                 self.assertEqual(code, 1)
                 self.assertEqual([(item["path"], item["code"]) for item in json.loads(output)["findings"]], [
                     ("local.md", "NAS001"), ("src/api.py", "NAS001"),
                 ])
-                code, output = run(build_parser().parse_args([str(root), "--select", "NAS001"]), cwd=root)
+                code, output = run(_parse_options([str(root), "--select", "NAS001"]), cwd=root)
                 self.assertEqual(code, 1)
                 self.assertEqual([(item["path"], item["code"]) for item in json.loads(output)["findings"]], [
                     ("local.md", "NAS001"), ("src/api.py", "NAS001"),
