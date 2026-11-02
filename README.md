@@ -118,3 +118,7 @@ The initial rule inventory adapts the editorial guidance in [Peter Yang's `no-ai
 The `RDL` rules adapt Thomas Hikaru Clark, Matias B. Martin, and Kyle Mahowald's [“Why is AI-generated language so hard to understand?”](https://arxiv.org/html/2610.29162v1), arXiv:2610.29162v1 (21 October 2026), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The adaptation uses contextual lint judgments rather than reproducing the paper's corpus measurements.
 
 The `STE` rules are original summaries and illustrations of ASD-STE100 Issue 9 Part 1, covering 53 writing rules and eight general recommendations. The supplied full Issue 9 PDF contains Part 2's controlled dictionary; the linter does not ingest it. The [technical-English reference](docs/reference/technical-english.md) documents source citations, copyright and trademark limits, and this scope distinction. The project is independent and is not endorsed by ASD.
+
+## License
+
+Unless otherwise stated, style-audit's original source code is licensed under MIT; see [`LICENSE`](LICENSE). Third-party and source-derived material retains its own terms: the `no-ai-slop` notice is in [`third_party/no-ai-slop-LICENSE`](third_party/no-ai-slop-LICENSE), the RDL attribution is described above, and this license does not grant rights to ASD-STE100 or the supplied standard PDF.
