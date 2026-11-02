@@ -180,5 +180,73 @@ class DecisionAPIConfigurationTests(unittest.TestCase):
         )
 
 
+    def test_openrouter_decision_model_uses_alpha_decisions_endpoint(self) -> None:
+        requests: list[tuple[str, dict[str, str], dict[str, object]]] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                length = int(self.headers["Content-Length"])
+                body = json.loads(self.rfile.read(length))
+                requests.append((self.path, dict(self.headers), body))
+                response = json.dumps(
+                    {
+                        "id": "gen-dec-fixture",
+                        "model": "microsoft/microsoft-decision-1",
+                        "answers": {"NAS101": {"type": "noul", "noul": 0.93}},
+                        "usage": {"input_tokens": 4, "output_tokens": 0, "total_tokens": 4},
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}/api"
+            with tempfile.TemporaryDirectory() as temporary:
+                project = Path(temporary)
+                (project / "pyproject.toml").write_text(
+                    "[tool.style-audit.llm.litellm]\n"
+                    f'api_base = "{base}"\n'
+                    "timeout = 5.0\n",
+                    encoding="utf-8",
+                )
+                config = load_config(project).llm_litellm
+                document = TextDocument("draft.md", "The future isn't coming. It's already here.")
+                with patch("style_audit.llm.load_decision_api", side_effect=load_decision_api):
+                    with patch.dict(
+                        os.environ,
+                        {"HOME": temporary, "OPENROUTER_API_KEY": "fixture-secret"},
+                    ):
+                        findings = judge_document(
+                            document,
+                            (RULES_BY_CODE["NAS101"],),
+                            "openrouter/microsoft/microsoft-decision-1",
+                            threshold=0.8,
+                            litellm_config=config,
+                        )
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+            server.server_close()
+
+        self.assertEqual(len(requests), 1)
+        path, headers, body = requests[0]
+        self.assertEqual(path, "/api/alpha/decisions")
+        self.assertEqual(headers["Authorization"], "Bearer fixture-secret")
+        self.assertEqual(body["model"], "microsoft/microsoft-decision-1")
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(
+            (findings[0].code, findings[0].line, findings[0].column, findings[0].evidence),
+            ("NAS101", 1, 1, document.text),
+        )
+
 if __name__ == "__main__":
     unittest.main()

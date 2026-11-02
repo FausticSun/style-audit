@@ -14,7 +14,7 @@ output = "text"
 
 [tool.style-audit.llm]
 enabled = false
-model = "azure-maas-judge/Decision-1"
+model = "openrouter/microsoft/microsoft-decision-1"
 threshold = 0.8
 ```
 
@@ -30,20 +30,22 @@ The `llm` table accepts:
 | Setting | Type and default | Effect |
 | --- | --- | --- |
 | `enabled` | Boolean, default `false` | Opt into judging selected LLM rules. |
-| `model` | Non-empty string, no default model | Select the configured Azure MaaS Decision-1 model or a LiteLLM chat model. |
+| `model` | Non-empty string, no default model | Select the OpenRouter Microsoft Decision-1 model, an `azure-maas-judge/<model-id>` Decisions model, or a LiteLLM chat model. |
 | `threshold` | Finite number in `[0, 1]`, default `0.8` | Emit decision findings when probability is greater than or equal to this value. |
 
 Use `azure-maas-judge/Decision-1` for Azure MaaS Decisions judging. The public selector syntax is `azure-maas-judge/<model-id>`. The OMP registry supplies defaults for its base URL and API key, while `[tool.style-audit.llm.litellm]` can override LiteLLM settings as described below. The registry's `api: openrouter-decisions` selects the Decisions interface, not the OpenRouter service.
 
 Other model names retain the LiteLLM chat backend. For example, `openai/gpt-4o-mini` requires its provider's configuration. Never put raw credentials in project TOML.
 
+For OpenRouter Microsoft Decision-1, set `OPENROUTER_API_KEY`. LiteLLM's `systemone` adapter sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`; this model does not use chat completions. No OMP registry or custom endpoint is needed. If overriding `api_base`, use the OpenRouter API root (`https://openrouter.ai/api`), not the chat `/api/v1` base.
+
 Enabling LLM review requires an explicit model. A configured model alone does not enable config-driven calls: `enabled` must be true, or an LLM rule must be explicitly selected. Command-line opt-ins are described below. See [LLM review and privacy](llm.md) for request content and backend differences.
 
 ### LiteLLM transport settings
 
-The optional `[tool.style-audit.llm.litellm]` table supplies LiteLLM settings for chat and Decision-1 requests. `custom_llm_provider` selects LiteLLM's provider-specific Decisions adapter. For Microsoft Foundry project endpoints, configure `azure_ai` with the project `api_base`. For an OpenAI-compatible endpoint ending `/openai/v1`, configure `openai`. Style-audit passes the configured base and key explicitly.
+The optional `[tool.style-audit.llm.litellm]` table supplies LiteLLM settings for chat and Decisions requests. `custom_llm_provider` selects LiteLLM's provider-specific Decisions adapter. OpenRouter Decision-1 uses `openrouter`; Microsoft Foundry project endpoints use `azure_ai`, and OpenAI-compatible endpoints use `openai`. Style-audit passes the configured base and key explicitly.
 
-The OMP registry still uses `api: openrouter-decisions` for this model entry. That value identifies the Decisions interface and does not route requests through OpenRouter.
+The OMP registry still uses `api: openrouter-decisions` for its legacy Azure MaaS model entry. That value identifies the Decisions interface and does not route requests through OpenRouter.
 
 ```toml
 [tool.style-audit.llm.litellm]
@@ -56,14 +58,14 @@ temperature = 0
 
 | Setting | Type and default | Effect |
 | --- | --- | --- |
-| `api_base` | Optional non-empty URL, with Decision-1 falling back to the OMP provider's `baseUrl` | Sets LiteLLM's API base, which requires HTTPS except for loopback HTTP and rejects embedded credentials, query strings, and fragments. |
-| `api_key_env` | Optional environment-variable name | Uses that variable's value as the API key, which must be set and does not fall back to the registry key. If omitted, `AZURE_MAAS_JUDGE_API_KEY` overrides the OMP key. |
-| `custom_llm_provider` | Optional non-empty string, defaulting to `openai` for Decision-1 | Selects LiteLLM's Decisions adapter and is passed through to LiteLLM. Use `azure_ai` for Microsoft Foundry project endpoints or `openai` for OpenAI-compatible endpoints. Style-audit does not restrict the provider name. |
-| `decision_model` | Optional non-empty string, or the CLI model ID when omitted | Selects the Decisions model ID, which must be listed by the provider when the OMP registry is loaded (the documented default is `Decision-1`). |
+| `api_base` | Optional non-empty URL; OpenRouter Decisions default to `https://openrouter.ai/api`, and Azure MaaS can fall back to the OMP provider's `baseUrl` | Sets LiteLLM's API base, which requires HTTPS except for loopback HTTP and rejects embedded credentials, query strings, and fragments. |
+| `api_key_env` | Optional environment-variable name | Uses that variable's value as the API key, which must be set. OpenRouter defaults to `OPENROUTER_API_KEY`; Azure MaaS otherwise checks `AZURE_MAAS_JUDGE_API_KEY` and then the OMP registry key. |
+| `custom_llm_provider` | Optional non-empty string | Selects LiteLLM's Decisions adapter. OpenRouter Decision-1 requires `openrouter`; Azure MaaS defaults to `openai`, with `azure_ai` for Microsoft Foundry project endpoints. |
+| `decision_model` | Optional non-empty string, or the CLI model ID when omitted | Selects the Decisions model ID. OpenRouter adds the `openrouter/` prefix when it is omitted; Azure MaaS validates IDs against the OMP model list when that registry is loaded. |
 | `timeout` | Optional finite positive number of seconds | Overrides LiteLLM's request timeout. |
 | `temperature` | Finite number in `[0, 2]`, default `0` | Sets chat-completion temperature. Decisions requests do not use it. |
 
-Project values override matching Azure MaaS settings from the OMP registry. The registry supplies `baseUrl` and/or `apiKey` when those are not supplied by project settings or environment, and validates the selected model ID against its `models` list when loaded. A project `api_base` plus `api_key_env` can provide the full endpoint and credential source without registry lookup. Never put a raw key in TOML. Use an environment-variable name or the user-level registry, and protect the registry file.
+Project values override matching Azure MaaS settings from the OMP registry. The registry supplies `baseUrl` and/or `apiKey` when those are not supplied by project settings or environment, and validates the selected model ID against its `models` list when loaded. A project `api_base` plus `api_key_env` can provide the full endpoint and credential source without registry lookup. OpenRouter calls use OpenRouter credentials and the Decisions endpoint directly; they do not read this registry. Never put a raw key in TOML. Use an environment-variable name or the user-level registry, and protect the registry file.
 
 TOML `threshold` accepts integers or floats, but rejects booleans, strings, nonfinite values (`nan` and `inf`), and values outside `[0, 1]`. `--threshold` overrides the configured value. Its effective value must also be finite and in range. Invalid settings fail with exit `2`, not an empty successful audit. The threshold neither enables LLM review nor changes rule selection. It has no filtering effect on chat responses, which do not return decision probabilities.
 

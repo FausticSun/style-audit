@@ -1,4 +1,4 @@
-"""Resolve Azure MaaS Decision API settings for LiteLLM."""
+"""Resolve provider settings for LiteLLM Decisions calls."""
 
 from dataclasses import dataclass, field
 import os
@@ -13,6 +13,9 @@ from .models import AuditError
 _PROVIDER = "azure-maas-judge"
 _MODEL = "Decision-1"
 _API = "openrouter-decisions"
+_OPENROUTER_MODEL_PREFIX = "openrouter/"
+_OPENROUTER_API_BASE = "https://openrouter.ai/api"
+_OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,25 @@ def load_decision_api(
     requested_model: str = _MODEL,
     registry_path: Path | None = None,
 ) -> DecisionAPISettings:
-    """Resolve LiteLLM settings from pyproject first, then the OMP model registry."""
+    """Resolve OpenRouter directly or Azure MaaS through project/OMP settings."""
+    if requested_model.startswith(_OPENROUTER_MODEL_PREFIX):
+        env_name = config.api_key_env or _OPENROUTER_API_KEY_ENV
+        api_key = os.environ.get(env_name)
+        if not isinstance(api_key, str) or not api_key.strip():
+            raise AuditError(f"OpenRouter Decisions judging requires API key environment variable {env_name!r}")
+        if config.custom_llm_provider not in (None, "openrouter"):
+            raise AuditError("OpenRouter Decisions models require custom_llm_provider = 'openrouter'")
+        model_id = config.decision_model or requested_model
+        model = model_id if model_id.startswith(_OPENROUTER_MODEL_PREFIX) else f"{_OPENROUTER_MODEL_PREFIX}{model_id}"
+        base_url = config.api_base or os.environ.get("OPENROUTER_API_BASE") or _OPENROUTER_API_BASE
+        return DecisionAPISettings(
+            api_base=validate_api_base(base_url),
+            model=model.strip(),
+            custom_llm_provider="openrouter",
+            api_key=api_key.strip(),
+            timeout=config.timeout,
+        )
+
     api_key = None
     env_name = config.api_key_env
     if env_name:

@@ -1,6 +1,6 @@
 # Installation and first scan
 
-The package requires Python 3.14 or newer and uses [uv](https://docs.astral.sh/uv/) for dependency and environment management.
+The package requires Python 3.12 or newer and uses [uv](https://docs.astral.sh/uv/) for dependency and environment management.
 
 ## Use in a new Python/uv project
 
@@ -11,13 +11,13 @@ This walkthrough installs the current repository from a local checkout as a deve
 Start in the directory **containing** the `style-audit` checkout, not inside the checkout:
 
 ```sh
-uv init --python 3.14 writing-project
+uv init --python 3.12 writing-project
 cd writing-project
 uv add --dev --editable ../style-audit
 uv run style-audit --help
 ```
 
-The example creates a Python 3.14 project. The tool requires Python 3.14 or newer. It cannot be added to a project environment that must support an older Python version.
+The example creates a Python 3.12 project. The tool requires Python 3.12 or newer. It cannot be added to a project environment that must support an older Python version.
 
 `uv add` installs the console command and LiteLLM dependency, updates `uv.lock`, and adds these sections to your application's `pyproject.toml`:
 

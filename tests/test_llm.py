@@ -120,20 +120,16 @@ class DecisionJudgmentTests(unittest.TestCase):
         self.assertEqual(finding.fix, "")
 
 
-    def test_retired_decision_aliases_do_not_fall_back_to_chat(self) -> None:
-        for model in (
-            "microsoft/microsoft-decision-1",
-            "openrouter/microsoft/microsoft-decision-1",
-        ):
-            with self.subTest(model=model):
-                with patch("style_audit.llm.litellm.systemone") as decision_call:
-                    with patch("style_audit.llm.litellm.completion") as chat_call:
-                        with patch("style_audit.llm.load_decision_api") as load_settings:
-                            with self.assertRaisesRegex(AuditError, "retired Decision-1"):
-                                judge_document(self.document, self.rules, model)
-                decision_call.assert_not_called()
-                chat_call.assert_not_called()
-                load_settings.assert_not_called()
+    def test_retired_decision_alias_does_not_fall_back_to_chat(self) -> None:
+        model = "microsoft/microsoft-decision-1"
+        with patch("style_audit.llm.litellm.systemone") as decision_call:
+            with patch("style_audit.llm.litellm.completion") as chat_call:
+                with patch("style_audit.llm.load_decision_api") as load_settings:
+                    with self.assertRaisesRegex(AuditError, "retired Decision-1"):
+                        judge_document(self.document, self.rules, model)
+        decision_call.assert_not_called()
+        chat_call.assert_not_called()
+        load_settings.assert_not_called()
 
     def test_probability_below_threshold_is_clean(self) -> None:
         response = self._response({"NAS106": 0.799999})

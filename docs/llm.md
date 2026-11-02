@@ -10,22 +10,24 @@ select = ["NAS001", "NAS106"]
 
 [tool.style-audit.llm]
 enabled = true
-model = "azure-maas-judge/Decision-1"
+model = "openrouter/microsoft/microsoft-decision-1"
 threshold = 0.8
 ```
 
 Or enable one invocation:
 
 ```sh
-style-audit --llm --model azure-maas-judge/Decision-1 --threshold 0.8 draft.md
-style-audit --select NAS106 --model azure-maas-judge/Decision-1 --threshold 0.9 draft.md
+style-audit --llm --model openrouter/microsoft/microsoft-decision-1 --threshold 0.8 draft.md
+style-audit --select NAS106 --model openrouter/microsoft/microsoft-decision-1 --threshold 0.9 draft.md
 ```
 
 [Per-file selections](configuration.md#per-file-rule-selection) can enable editorial rules only for matching paths. A matching entry that explicitly selects an LLM rule opts into that file's review, and the same entry does not enable review of unmatched files.
 
 An explicit model remains required. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
 
-Use `azure-maas-judge/Decision-1` for the configured Azure MaaS Decisions model. The public selector syntax is `azure-maas-judge/<model-id>`. When registry settings are needed, OMP lookup prefers `~/.omp/agent/models.yml`, then `~/.omp/agents/models.yml`.
+Use `openrouter/microsoft/microsoft-decision-1` for Microsoft Decision-1 on OpenRouter. Set `OPENROUTER_API_KEY`; LiteLLM routes the model through `POST https://openrouter.ai/api/alpha/decisions` with its `systemone` adapter, not through chat completions. No OMP registry or custom endpoint is needed. If you set `api_base`, use `https://openrouter.ai/api`.
+
+The existing `azure-maas-judge/Decision-1` selector remains available for the configured Azure MaaS Decisions model. Its public selector syntax is `azure-maas-judge/<model-id>`. When registry settings are needed, OMP lookup prefers `~/.omp/agent/models.yml`, then `~/.omp/agents/models.yml`.
 
 When OMP registry lookup is needed, `providers.azure-maas-judge` uses `api: openrouter-decisions` and lists the model ID (with `baseUrl` and `apiKey` when the registry supplies them). That API value selects the Decisions interface, not the LiteLLM route or OpenRouter service. LiteLLM defaults to `custom_llm_provider = "openai"`. Set it to `azure_ai` for a Microsoft Foundry project endpoint. Project `[tool.style-audit.llm.litellm]` settings override matching registry defaults.
 

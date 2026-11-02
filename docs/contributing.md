@@ -1,6 +1,6 @@
 # Contributing
 
-Requires Python 3.14 or newer. Install the package, development tests, and documentation tooling with:
+Requires Python 3.12 or newer. Install the package, development tests, and documentation tooling with:
 
 ```sh
 uv sync --group dev --group docs

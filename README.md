@@ -4,7 +4,7 @@ A Python writing-style linter for Markdown, reStructuredText, plain text, Gherki
 
 ## Install and run
 
-Requires Python 3.14 or newer. Follow the [new Python/uv project walkthrough](docs/installation.md#use-in-a-new-pythonuv-project) to add the tool as a development dependency, configure `pyproject.toml`, and run local or optional LLM checks. To work on this repository's checkout with [uv](https://docs.astral.sh/uv/):
+Requires Python 3.12 or newer. Follow the [new Python/uv project walkthrough](docs/installation.md#use-in-a-new-pythonuv-project) to add the tool as a development dependency, configure `pyproject.toml`, and run local or optional LLM checks. To work on this repository's checkout with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv sync
@@ -67,46 +67,28 @@ Apply different rules by file pattern with `[tool.style-audit.per-file-select]`,
 
 See the [configuration guide](docs/configuration.md), [CLI reference](docs/reference/cli.md), and [LLM privacy guide](docs/llm.md) for selection precedence, models, and provider behavior. An LLM opt-in never overrides a deterministic-only selection.
 
-Optional Azure MaaS Decision-1 review uses an explicit model and the OMP registry's `azure-maas-judge` provider. `AZURE_MAAS_JUDGE_API_KEY`, when set, overrides its registry key:
+OpenRouter provides optional Microsoft Decision-1 review through LiteLLM. Set `OPENROUTER_API_KEY` in your environment or secret manager; keep the value out of project TOML and version control.
 
-Project-specific LiteLLM transport settings can override the OMP registry defaults. Keep the credential outside TOML and configure an environment-variable name instead:
+Example configuration:
 
 ```toml
 [tool.style-audit.llm]
 enabled = true
-model = "azure-maas-judge/Decision-1"
-
-[tool.style-audit.llm.litellm]
-api_base = "https://<your-foundry-host>.services.ai.azure.com/api/projects/<project>"
-custom_llm_provider = "azure_ai"
-decision_model = "Decision-1"
-timeout = 120
-temperature = 0.0
+model = "openrouter/microsoft/microsoft-decision-1"
+threshold = 0.8
 ```
 
-`api_base`, `custom_llm_provider`, `decision_model`, and `timeout` control the Decisions request. For a Microsoft Foundry project endpoint, `custom_llm_provider = "azure_ai"` selects LiteLLM's Azure AI Decisions adapter. Style-audit passes the configured base and key explicitly. With `api_key_env` omitted, `AZURE_MAAS_JUDGE_API_KEY` overrides the OMP registry key. Otherwise, the registry's `apiKey` is used.
+LiteLLM routes this model through OpenRouter's Decisions API (`POST https://openrouter.ai/api/alpha/decisions`), not the chat-completions endpoint. It uses LiteLLM's `systemone` adapter; no custom endpoint configuration is required.
 
-For an OpenAI-compatible base ending in `/openai/v1`, set `custom_llm_provider = "openai"`. LiteLLM sends the request to `/openai/v1/decisions`. The OMP registry's `api: openrouter-decisions` identifies the Decisions interface for the model entry. It does not send requests through OpenRouter.
-
-`temperature` controls chat completions. `api_key_env` is a variable name, never a secret value.
+Run a scoped review:
 
 ```sh
-style-audit draft.md --select NAS106 --model azure-maas-judge/Decision-1 --threshold 0.8
-```
-
-Readability review uses the same Decisions API:
-
-```sh
-style-audit draft.md --select RDL --model azure-maas-judge/Decision-1 --threshold 0.8
+style-audit draft.md --select RDL
 ```
 
 The readability rules judge interpretation difficulty in English sentences, not AI authorship or a readability score. They preserve familiar constructions and do not pretend to measure n-gram frequency or dependency statistics without reference data. See the [readability guide](docs/reference/readability.md).
 
-The OMP `openrouter-decisions` registry value is validated for the Azure MaaS model entry. Style-audit uses LiteLLM's OpenAI Decisions adapter with the explicitly configured Azure endpoint and key.
-
-Both decision and chat review group selected LLM rules by their registered scope and make one request per eligible unit in each selected scope, containing only that unit's masked text and matching rules. Decision probabilities greater than or equal to the threshold produce findings anchored to the complete original unit, with no generated fix. The default threshold is `0.8`. The `--threshold` option overrides `[tool.style-audit.llm].threshold`.
-
-Other LiteLLM models, such as `openai/gpt-4o-mini`, use chat-based review with exact visible quotes within the current unit and no probability filtering.
+LLM rules are grouped by registered scope and sent in one request per eligible unit. Decision-1 returns a probability for each selected rule; the configured threshold controls which findings are reported, including probabilities equal to the threshold.
 
 Remote review may incur charges. The selected scopes and their unit counts determine request volume. Masking preserves logical units but is not sensitive-data redaction. The [LLM guide](docs/llm.md) explains segmentation, privacy, validation, and limitations. The [dogfooding guide](docs/dogfooding.md) separates historical pre-scope observations, including an authentication failure, from current review evidence.
 

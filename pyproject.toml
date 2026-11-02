@@ -5,8 +5,8 @@ description = "A Python writing-style auditor combining deterministic NLP and LL
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
-requires-python = ">=3.14"
-dependencies = ["litellm>=1.106.4", "PyYAML>=6.0"]
+requires-python = ">=3.12"
+dependencies = ["click>=8.1", "litellm>=1.106.4", "PyYAML>=6.0"]
 
 [project.scripts]
 style-audit = "style_audit:main"

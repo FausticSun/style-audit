@@ -112,10 +112,8 @@ def _parse_response(content: Any, document: TextDocument, rules: tuple[Rule, ...
 
 
 _DECISION_MODEL_PREFIX = "azure-maas-judge/"
-_RETIRED_DECISION_MODELS = frozenset({
-    "microsoft/microsoft-decision-1",
-    "openrouter/microsoft/microsoft-decision-1",
-})
+_OPENROUTER_DECISION_MODEL = "openrouter/microsoft/microsoft-decision-1"
+_RETIRED_DECISION_MODELS = frozenset({"microsoft/microsoft-decision-1"})
 
 
 def _judge_decisions(
@@ -211,11 +209,18 @@ def judge_document(
     if not rules:
         return []
     if model in _RETIRED_DECISION_MODELS:
-        raise AuditError(f"retired Decision-1 model name {model!r}; use azure-maas-judge/Decision-1")
+        raise AuditError(
+            f"retired Decision-1 model name {model!r}; use {_OPENROUTER_DECISION_MODEL}"
+        )
     if model == _DECISION_MODEL_PREFIX[:-1]:
         raise AuditError("azure-maas-judge model selection requires a model ID after the slash")
-    decision_model = model.startswith(_DECISION_MODEL_PREFIX)
-    decision_model_id = model.removeprefix(_DECISION_MODEL_PREFIX) if decision_model else None
+    decision_model = model.startswith(_DECISION_MODEL_PREFIX) or model == _OPENROUTER_DECISION_MODEL
+    if model.startswith(_DECISION_MODEL_PREFIX):
+        decision_model_id = model.removeprefix(_DECISION_MODEL_PREFIX)
+    elif model == _OPENROUTER_DECISION_MODEL:
+        decision_model_id = model
+    else:
+        decision_model_id = None
     if decision_model and (isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or not 0 <= threshold <= 1):
         raise AuditError("LLM decision threshold must be a finite number between 0 and 1")
     settings = load_decision_api(litellm_config, decision_model_id) if decision_model else None
