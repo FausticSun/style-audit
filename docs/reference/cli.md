@@ -11,7 +11,7 @@ style-audit docs/                  # traverse matching files
 cat draft.txt | style-audit -      # read standard input
 ```
 
-Pass one or more paths. The literal `-` reads stdin once and may be combined with files. `--stdin-filename NAME` sets its diagnostic path. It selects Python docstring extraction for `.py` or `.pyi`, or Gherkin processing for `.feature`. Other names retain prose input. If no paths are given, `.` is used.
+Pass one or more paths. The literal `-` reads stdin once and may be combined with files. `--stdin-filename NAME` sets its diagnostic path. It selects Python extraction for `.py` and `.pyi` (Marimo Markdown cells or ordinary Python docstrings), or Gherkin processing for `.feature`. Other names retain prose input. If no paths are given, `.` is used.
 
 Explicit files need not match the directory include patterns, but they must be UTF-8 text.
 
@@ -21,9 +21,9 @@ Configuration is discovered by walking upward from the current working directory
 
 ## Python docstrings
 
-Inputs ending in `.py` or `.pyi` are parsed with the running Python interpreter. Only AST-recognized module, class, function, async-function, and nested-definition docstrings are audited. Comments, assigned literals (including assignments to `__doc__`), later standalone strings, bytes, f-strings, and template strings are excluded. Input code is never executed or imported. Invalid Python produces a located error on stderr and exit status `2`, not a raw-source fallback or a successful empty audit.
+Inputs ending in `.py` or `.pyi` are parsed with the running Python interpreter and never executed or imported. A recognized Marimo `.py` app is handled as described below. Other `.py` files and `.pyi` stubs audit only AST-recognized module, class, function, async-function, and nested-definition docstrings. Comments, assigned literals (including assignments to `__doc__`), later standalone strings, bytes, f-strings, and template strings are excluded from ordinary Python docstring extraction. Invalid Python produces a located error on stderr and exit status `2`, not a raw-source fallback or a successful empty audit.
 
-Each docstring becomes a separate logical document. Its Python string value is decoded, including escaped characters and adjacent literal concatenation, then cleaned like `inspect.cleandoc`: tabs expand, common continuation-line indentation is removed, and blank outer lines are trimmed. Existing quotation and Markdown-code masks still exempt examples within the docstring. Sentence, paragraph, section, and document scopes never combine separate docstrings or include surrounding executable code.
+Each ordinary Python docstring becomes a separate logical document. Its Python string value is decoded, including escaped characters and adjacent literal concatenation, then cleaned like `inspect.cleandoc`: tabs expand, common continuation-line indentation is removed, and blank outer lines are trimmed. Existing quotation and Markdown-code masks still exempt examples within the docstring. Sentence, paragraph, section, and document scopes never combine separate docstrings or include surrounding executable code.
 
 ```sh
 style-audit src/ tests/ --select NAS00
@@ -32,9 +32,20 @@ cat module.py | style-audit - --stdin-filename module.py --select NAS00
 style-audit module.py --select NAS00,RDL --model azure-maas-judge/Decision-1
 ```
 
-No new rule IDs or configuration toggle are needed. The same selection, ignores, LLM opt-in, and exit codes apply. Files without docstrings produce no findings or provider requests. Source positions count original Unicode characters, and UTF-8 BOM and physical newlines are retained in the source mapping.
+No new rule IDs or configuration toggle are needed. The same selection, ignores, LLM opt-in, and exit codes apply. Files without extracted prose produce no findings or provider requests. Source positions count original Unicode characters, and UTF-8 BOM and physical newlines are retained in the source mapping.
 
 Evidence is the original source spelling, not the cleaned model input. A span can contain escape sequences, indentation, or the quote/whitespace/comment separators between concatenated literals. Those separators are source context, not audited prose or remote-request content.
+
+### Marimo Markdown cells
+
+A `.py` file is treated as a Marimo app when it imports Marimo and constructs `App` (including an imported `App` alias). Only direct `mo.md()` calls with string-literal arguments are extracted; ordinary and raw strings are decoded, and f-strings contribute only their static text. Interpolation expressions and nonliteral arguments are not evaluated. Each Markdown call becomes a separate document with source-mapped findings. Comments, cell code, generated widget values, and `mo.mermaid()` diagrams are excluded.
+
+```sh
+style-audit notebooks/system_design.py --select NAS00 --format json
+style-audit notebooks/system_design.py --select NAS,RDL --model azure-maas-judge/Decision-1
+```
+
+Selecting LLM rules sends only the current extracted Markdown unit after normal code and quotation masking. Visible private prose remains eligible for transmission; extraction is not redaction.
 
 ## Gherkin feature files
 
@@ -58,7 +69,7 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 | `--llm` | Explicitly enable LLM rules among the currently selected rules. |
 | `--model MODEL` | Select the configured Azure MaaS Decision-1 model or a LiteLLM chat model and opt into judging selected LLM rules. |
 | `--threshold FLOAT` | Override the decision-probability threshold (default `0.8`). The value must be finite and in `[0, 1]`. It does not enable judging. |
-| `--stdin-filename NAME` | Set the stdin path for per-file selection and select Python docstring extraction for `.py` and `.pyi` names or Gherkin processing for `.feature` names. |
+| `--stdin-filename NAME` | Set the stdin path for per-file selection; `.py` selects Marimo Markdown cells or Python docstrings, `.pyi` selects docstrings, and `.feature` selects Gherkin processing. |
 | `--version` | Print the package version. |
 | `-h`, `--help` | Print help. |
 

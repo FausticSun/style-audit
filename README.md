@@ -1,6 +1,6 @@
 # style-audit
 
-A Python writing-style linter for Markdown, reStructuredText, plain-text files, Gherkin feature files, and Python docstrings. It combines conservative deterministic checks with optional editorial judgments through [LiteLLM](https://docs.litellm.ai/). It reports patterns to review. It does not rewrite prose, score authorship, or claim that text was written by AI.
+A Python writing-style linter for Markdown, reStructuredText, plain text, Gherkin feature files, Python docstrings, and Marimo Markdown cells. It combines conservative deterministic checks with optional editorial judgments through [LiteLLM](https://docs.litellm.ai/). It reports patterns to review. It does not rewrite prose, score authorship, or claim that text was written by AI.
 
 ## Install and run
 
@@ -15,7 +15,7 @@ uv run style-audit README.md
 
 The full user and developer guide starts at [docs/index.md](docs/index.md). It covers installation, CLI behavior, `pyproject.toml`, the generated rule reference, LiteLLM privacy, and contribution workflows. The runtime rule catalog in `src/style_audit/rules.py` is the source of truth.
 
-The [dogfooding guide](docs/dogfooding.md) documents auditing this README, source documentation, generated rule descriptions, and the repository's Python docstrings with the installed tool.
+The [dogfooding guide](docs/dogfooding.md) covers this README, source documentation, generated rule descriptions, Python docstrings, and the Marimo system-design report.
 
 Run the full suite with `uv run --group dev pytest`, or only the Gherkin acceptance scenarios with `uv run --group dev pytest -m bdd -v`. See [behavioral testing](docs/contributing.md#behavioral-acceptance-scenarios) for feature files, step definitions, and isolated provider fixtures.
 
@@ -26,7 +26,7 @@ uv sync --group docs
 uv run --group docs mkdocs serve
 ```
 
-Without paths, `style-audit` scans the current directory for `.md`, `.markdown`, `.rst`, `.txt`, `.feature`, `.py`, and `.pyi` files, excluding `.git`, virtual environments, build output, directories named `site` (including generated documentation output), and Python caches. Python inputs audit docstrings only. Other explicitly named files are treated as UTF-8 prose. Pass `-` to audit standard input:
+Without paths, `style-audit` scans the current directory for `.md`, `.markdown`, `.rst`, `.txt`, `.feature`, `.py`, and `.pyi` files, excluding `.git`, virtual environments, build output, directories named `site` (including generated documentation output), and Python caches. Ordinary Python inputs audit docstrings; recognized Marimo apps audit literal `mo.md()` cell content. Other explicitly named files are treated as UTF-8 prose. Pass `-` to audit standard input:
 
 ```sh
 style-audit notes.md
@@ -38,18 +38,22 @@ Exit codes: `0` no findings, `1` findings reported, `2` configuration, input, or
 
 ## Python docstrings
 
-Python files are parsed, never executed. Module, class, function, async-function, and nested-definition docstrings are audited independently. Comments, assigned strings, later string expressions, bytes, f-strings, and template strings are not docstrings and are excluded. Strings are decoded and cleaned with Python's docstring indentation conventions. Diagnostics retain original file positions and source spelling, including escapes and adjacent literals.
+Ordinary Python files are parsed, never executed. Module, class, function, async-function, and nested-definition docstrings are audited independently. Comments, assigned strings, later string expressions, bytes, f-strings, and template strings are not docstrings and are excluded. Strings are decoded and cleaned with Python's docstring indentation conventions. Diagnostics retain original file positions and source spelling, including escapes and adjacent literals.
 
 ```sh
 style-audit src/ tests/ docs/hooks.py --select NAS00 --format json
 cat module.py | style-audit - --stdin-filename module.py --select NAS00
 ```
 
-The stdin name selects Python extraction when it ends in `.py` or `.pyi`. Otherwise stdin remains prose. Local checks need no provider. LLM opt-in applies the existing rules to each docstring, never to surrounding code or comments. See [Python inputs](docs/reference/cli.md#python-docstrings) and [own-code dogfooding](docs/dogfooding.md#audit-python-docstrings).
+The stdin name selects Python extraction when it ends in `.py` or `.pyi`: recognized Marimo `.py` apps expose literal Markdown cells, and other Python inputs expose docstrings. Otherwise stdin remains prose. Local checks need no provider. LLM opt-in applies only to extracted prose, never surrounding code or comments. See [Python inputs](docs/reference/cli.md#python-docstrings) and [own-code dogfooding](docs/dogfooding.md#audit-python-docstrings).
+
+### Marimo Markdown cells
+
+Marimo `.py` apps are parsed, not executed. When the source imports Marimo and constructs `App`, direct `mo.md()` string literals become separate audit documents. Literal f-string text is included; interpolation expressions, variable-driven Markdown, widget output, `mo.mermaid()` diagrams, comments, and other Python code are not evaluated or audited. Findings map to original source positions. LLM review can send visible cell prose to the configured provider, so treat it as ordinary remote-audit input.
 
 ## Rules and configuration
 
-Rule metadata lives in `src/style_audit/rules.py`, with the source-located ASD-STE100 entries in `src/style_audit/ste_rules.py`. MkDocs renders [one reference page per ruleset](docs/reference/rules.md), with each rule's metadata, examples, and contextual explanation. `NAS` selects no-ai-slop, `RDL` selects the paper-backed readability rules, and `STE` selects all 53 Issue 9 Part 1 writing rules plus eight general recommendations. `STE606` and `STE801` are local checks, while the other STE entries require contextual LLM review. The ASD-STE100 Part 2 dictionary is not bundled, so the tool does not certify lexical approval or compliance. See the [STE reference](docs/reference/technical-english.md), configuration and [dogfooding workflow](docs/dogfooding.md#audit-the-generated-rule-catalog).
+Rule metadata lives in `src/style_audit/rules.py`, with the source-located ASD-STE100 entries in `src/style_audit/ste_rules.py`. MkDocs renders [one reference page per ruleset](docs/reference/rules.md), with each rule's metadata, examples, and contextual explanation. `NAS` selects no-ai-slop, `RDL` selects the paper-backed readability rules, and `STE` selects all 53 Issue 9 Part 1 writing rules plus eight general recommendations. The supplied Issue 9 PDF also contains Part 2's controlled dictionary, but the rule catalog does not parse those entries or verify vocabulary approval. `STE606` and `STE801` are local checks, while the other STE entries require contextual LLM review. See the [STE reference](docs/reference/technical-english.md), configuration and [dogfooding workflow](docs/dogfooding.md#audit-the-generated-rule-catalog).
 
 Minimal project configuration:
 
@@ -113,4 +117,4 @@ The initial rule inventory adapts the editorial guidance in [Peter Yang's `no-ai
 
 The `RDL` rules adapt Thomas Hikaru Clark, Matias B. Martin, and Kyle Mahowald's [“Why is AI-generated language so hard to understand?”](https://arxiv.org/html/2610.29162v1), arXiv:2610.29162v1 (21 October 2026), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The adaptation uses contextual lint judgments rather than reproducing the paper's corpus measurements.
 
-The `STE` rules are original summaries and illustrations of ASD-STE100 Issue 9 Part 1, covering 53 writing rules and eight general recommendations. The [technical-English reference](docs/reference/technical-english.md) documents source citations, copyright and trademark limits, and the absence of the controlled Part 2 dictionary. The project is independent and is not endorsed by ASD.
+The `STE` rules are original summaries and illustrations of ASD-STE100 Issue 9 Part 1, covering 53 writing rules and eight general recommendations. The supplied full Issue 9 PDF contains Part 2's controlled dictionary; the linter does not ingest it. The [technical-English reference](docs/reference/technical-english.md) documents source citations, copyright and trademark limits, and this scope distinction. The project is independent and is not endorsed by ASD.

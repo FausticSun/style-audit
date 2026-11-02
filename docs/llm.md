@@ -66,7 +66,14 @@ The same rule scopes apply inside that docstring. A document-scoped rule does no
 
 Findings map back to the original file. Evidence uses the source spelling, so escaped characters and adjacent literal concatenation can make reported evidence differ from the decoded request text. Original indentation and physical newlines inside the located span remain source context. This is not redaction: private information in a docstring's unmasked prose or visible Gherkin heading/step text is eligible for transmission.
 
-Default directory scans include Python and `.feature` files. An existing model opt-in applies to their docstrings and unmasked Gherkin heading/step prose unless [include patterns](configuration.md) exclude them. Gherkin syntax, tags, comments, tables, and docstring fixtures are masked, and scenarios are not executed. See [Gherkin feature handling](reference/cli.md#gherkin-feature-files).
+Default directory scans include Python and `.feature` files. A model opt-in applies to ordinary Python docstrings, extracted Marimo Markdown cells, and unmasked Gherkin heading/step prose unless [include patterns](configuration.md) exclude them. Marimo source code, widget output, Mermaid diagrams, and Gherkin fixtures are not sent. Gherkin syntax, tags, comments, tables, and docstring fixtures are masked, and scenarios are not executed. See [Marimo Markdown handling](reference/cli.md#marimo-markdown-cells) and [Gherkin feature handling](reference/cli.md#gherkin-feature-files).
+
+### Marimo Markdown cells
+
+Recognized Marimo `.py` apps are parsed without importing the module or running cells. Direct `mo.md()` string-literal arguments become separate documents; static f-string text is included, while interpolation expressions and other nonliteral arguments are omitted. Code comments, executable code, widget output, and Mermaid diagrams are not audited or sent to a provider. Python rule scopes apply within each extracted Markdown cell, not across the whole app.
+
+Source maps retain original Unicode positions and source spelling through string decoding and indentation cleanup. This is not redaction: private prose in an extracted cell remains eligible for remote transmission when LLM rules are explicitly selected. Variable-derived Markdown and text generated only at runtime are outside the static extraction boundary.
+
 
 ### Decision judging
 
@@ -74,7 +81,7 @@ For `azure-maas-judge/<model-id>`, the application passes the selected ID (or th
 
 LiteLLM selects the route from `custom_llm_provider`: `azure_ai` uses `/providers/microsoft/v1/systemone` for a Foundry project endpoint, while `openai` uses `/openai/v1/decisions` for a base ending `/openai/v1`. The OMP `api: openrouter-decisions` value identifies the Decisions interface but does not route requests through the OpenRouter service. Style-audit passes the configured base URL and key, so the adapter does not use OpenAI's public endpoint. Other model names continue to use LiteLLM chat completions.
 
-A prior report audit through the OpenAI Decisions adapter returned `ServiceUnavailableError` (HTTP `503`). A later document-scoped `NAS113` check through the Azure AI Foundry route completed with no findings; the full configured NAS/RDL report audit remains unrun. See the [dogfooding record](dogfooding.md#current-report-audit-attempt) for the exact scope.
+A request through the OpenAI Decisions adapter returned `ServiceUnavailableError` (HTTP `503`). Later Foundry-route requests completed: a document-scoped `NAS113` check on `wages-report/report.md` returned no findings, and the Marimo system-design `NAS,RDL` audit returned three reviewed `NAS117` formatting findings and no `RDL` findings. The separate full `wages-report` NAS/RDL audit remains unrun. See the [dogfooding record](dogfooding.md#observed-marimo-system-design-audit) for the system-design audit scope.
 
 Shared decision `state` is the scope/text object described above. Questions are keyed by the matching-scope rule IDs and have `type="noul"`: each asks the bounded yes-or-no question of whether this unit violates that rule. Trusted instructions supply the scope, rule name, and description, restrict judgments to the unit's visible prose, preserve author voice and legitimate exceptions, and treat input content as untrusted data rather than instructions. Masked spans remain gaps inside the logical unit, not separately judged fragments.
 

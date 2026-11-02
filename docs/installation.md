@@ -70,7 +70,7 @@ uv run style-audit draft.md --format json
 cat draft.md | uv run style-audit -
 ```
 
-The default directory scan checks `.md`, `.markdown`, `.rst`, `.txt`, `.feature`, `.py`, and `.pyi` files. Python files audit docstrings only.
+The default directory scan checks `.md`, `.markdown`, `.rst`, `.txt`, `.feature`, `.py`, and `.pyi` files. Ordinary Python files audit docstrings; recognized Marimo `.py` apps audit direct Markdown cell literals without executing the app.
 
 Gherkin `.feature` files are processed as text without executing scenarios. Syntax prefixes, full-line tags, comments, table rows, and docstring fixtures are masked. Heading descriptions and step prose remain auditable.
 
@@ -88,7 +88,7 @@ def parse_count(value: str) -> int:
 
 Run `uv run style-audit example.py`: the local configuration reports `NAS001` at line 2, column 14. Change the docstring to `"""Parse an integer count."""` and rerun for a clean result. Comments and non-docstring strings do not affect this audit. A Python file with invalid syntax fails with exit `2`. It is never audited as raw prose.
 
-Audit an existing source tree with `uv run style-audit src/`, or pipe Python code with `cat example.py | uv run style-audit - --stdin-filename example.py`. The filename is needed to select Python extraction on stdin. [Python inputs](reference/cli.md#python-docstrings) covers scope, decoding, and source locations.
+Audit an existing source tree with `uv run style-audit src/`, or pipe Python code with `cat example.py | uv run style-audit - --stdin-filename example.py`. The filename is needed to select Python extraction on stdin. `.py` Marimo apps expose literal Markdown cells; ordinary `.py` files and `.pyi` stubs expose docstrings. [Python inputs](reference/cli.md#python-docstrings) covers scope, decoding, and source locations.
 
 ### Optional: enable LLM review
 
@@ -142,7 +142,7 @@ Subsequent `uv run style-audit` commands use this project configuration and the 
 
 Selected LLM rules send masked document units to the configured provider and can incur charges. Adding rule scopes can increase request volume. The threshold applies to Decision-1 finding probabilities, not to LiteLLM chat-model responses.
 
-A previous report-audit attempt through the OpenAI Decisions adapter returned LiteLLM `ServiceUnavailableError`. After switching to the Foundry route, one document-scoped `NAS113` check completed with no findings; the full configured report audit has not run. See the [dogfooding record](dogfooding.md#current-report-audit-attempt).
+A previous audit of `wages-report/report.md` through the OpenAI Decisions adapter returned LiteLLM `ServiceUnavailableError`. After switching to the Foundry route, one document-scoped `NAS113` check on that file completed with no findings; the full `wages-report` NAS/RDL audit remains unrun. The separate Marimo system-design audit exited `1` with three `NAS117` findings and no `RDL` findings. See the [dogfooding record](dogfooding.md#observed-marimo-system-design-audit).
 
 ### Other checkouts and CI
 

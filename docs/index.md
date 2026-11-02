@@ -21,7 +21,7 @@ The `NAS` rules adapt [Peter Yang's `no-ai-slop`](https://github.com/petergyang/
 
 The independent `RDL` [readability ruleset](reference/readability.md) adapts Thomas Hikaru Clark, Matias B. Martin, and Kyle Mahowald's [“Why is AI-generated language so hard to understand?”](https://arxiv.org/html/2610.29162v1), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It uses sentence-scoped LLM judgments rather than reproducing the paper's corpus measurements.
 
-The `STE` [Simplified Technical English ruleset](reference/technical-english.md) covers all 53 writing rules and eight general recommendations in ASD-STE100 Issue 9 Part 1. It includes two narrow local checks. Contextual rules use optional LLM review. It does not bundle or certify the controlled dictionary.
+The `STE` [Simplified Technical English ruleset](reference/technical-english.md) covers all 53 writing rules and eight general recommendations in ASD-STE100 Issue 9 Part 1. The full supplied PDF also contains Part 2's controlled dictionary, but the checker does not parse its entries or certify vocabulary compliance. `STE606` and `STE801` are local checks; other rules use optional LLM review.
 
 ## Build or preview this site
 

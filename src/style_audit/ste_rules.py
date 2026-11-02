@@ -6,7 +6,7 @@ from .models import Rule, RuleExample, RuleScope
 
 _SOURCE = "https://www.asd-europe.org/standards-specifications/simplified-technical-english/"
 _LIMIT = (
-    " The Part 2 dictionary and project terminology are not bundled, so request them when they determine the review and do not guess or certify technical facts."
+    " The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized, applicable vocabulary when it determines review; do not guess or certify technical facts."
 )
 
 

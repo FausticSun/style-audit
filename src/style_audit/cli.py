@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from .config import AuditConfig, load_config
 from .deterministic import analyze_deterministic
 from .docstrings import extract_docstrings
+from .marimo_docs import extract_markdown_cells
 from .llm import judge_document
 from .models import AuditError, Diagnostic, Rule
 from .reporting import render_json, render_text, sort_diagnostics
@@ -82,11 +83,14 @@ def _walk(directory: Path, config: AuditConfig, cwd: Path) -> list[Path]:
 def _documents(path: str, text: str) -> list[TextDocument]:
     suffix = Path(path).suffix.lower()
     if suffix in {".py", ".pyi"}:
+        if suffix == ".py" and "marimo" in text:
+            documents = extract_markdown_cells(path, text)
+            if documents is not None:
+                return documents
         return extract_docstrings(path, text)
     if suffix == ".feature":
         return [document_from_feature(path, text)]
     return [TextDocument(path, text)]
-
 
 def _collect(paths: Sequence[str], config: AuditConfig, stdin_text: str | None, stdin_name: str, cwd: Path) -> list[TextDocument]:
     if paths.count("-") > 1:
@@ -124,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="style-audit",
         description="Find source-backed writing-style patterns without guessing who wrote the text.",
     )
-    parser.add_argument("paths", nargs="*", help="UTF-8 prose files, Python docstrings, Gherkin feature files, directories, or - for stdin (default: current directory)")
+    parser.add_argument("paths", nargs="*", help="UTF-8 prose files, Python docstrings or Marimo Markdown cells, Gherkin feature files, directories, or - for stdin (default: current directory)")
     parser.add_argument("--config", type=Path, help="read configuration from this pyproject.toml or directory")
     parser.add_argument("--select", action="append", default=[], metavar="RULE[,RULE]", help="select rule IDs, prefixes, or globs; replaces configured global and per-file selection")
     parser.add_argument("--ignore", action="append", default=[], metavar="RULE[,RULE]", help="ignore rule IDs, prefixes, or globs")
@@ -132,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm", action="store_true", help="explicitly enable LLM judgments")
     parser.add_argument("--model", help="LiteLLM model for enabled editorial judgments")
     parser.add_argument("--threshold", type=float, help="decision probability threshold from 0 to 1 (default: project setting or 0.8)")
-    parser.add_argument("--stdin-filename", default="<stdin>", help="input name for stdin; .py/.pyi extracts Python docstrings and .feature parses Gherkin")
+    parser.add_argument("--stdin-filename", default="<stdin>", help="input name for stdin; .py extracts Marimo Markdown cells or Python docstrings, .pyi extracts docstrings, and .feature parses Gherkin")
     parser.add_argument("--version", action="version", version="style-audit 0.1.0")
     return parser
 

@@ -11,6 +11,7 @@ style-audit = "style_audit:main"
 
 [dependency-groups]
 dev = [
+    "marimo>=0.25.2",
     "pytest>=8.3",
     "pytest-bdd>=8.1",
 ]

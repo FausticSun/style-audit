@@ -1,0 +1,204 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": null
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "3792e38709010d54fd135eff0aaf3395",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "f226cf8cae73fd7548987fa0635efd98",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"style-audit-system-design\">style-audit \u2014 system design</h1>\n<span class=\"paragraph\"><strong>Purpose.</strong> A Python writing-style CLI that combines source-backed deterministic checks with optional, explicitly enabled editorial judgments. It reports reviewable findings; it does not rewrite prose or classify authorship.</span>\n<span class=\"paragraph\"><strong>Package:</strong> <code>0.1.0</code> \u00b7 <strong>Python:</strong> <code>&gt;=3.14</code><br />\n<strong>Runtime dependencies:</strong> <code>litellm&gt;=1.106.4</code>, <code>PyYAML&gt;=6.0</code><br />\n<strong>Developer tools:</strong> <code>marimo&gt;=0.25.2</code>, <code>pytest&gt;=8.3</code>, <code>pytest-bdd&gt;=8.1</code></span>\n<span class=\"paragraph\">The report reads the package rule catalog and <code>pyproject.toml</code> from this checkout. Rule counts and the rule explorer below are derived from the registered catalog rather than copied constants.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "b4a62c8040d3ecc247d146b286ee77a9",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-mermaid data-diagram='&quot;flowchart TD&#92;nCLI[&#92;&quot;CLI entry points&#92;&quot;] --&#92;u003e CFG[&#92;&quot;TOML settings and rule plan&#92;&quot;]&#92;nCFG --&#92;u003e INPUT[&#92;&quot;Paths or standard input&#92;&quot;]&#92;nINPUT --&#92;u003e KIND{&#92;&quot;Input kind&#92;&quot;}&#92;nKIND --&#92;u003e|Prose| DOC[&#92;&quot;TextDocument&#92;&quot;]&#92;nKIND --&#92;u003e|Python| AST[&#92;&quot;AST docstring extraction&#92;&quot;]&#92;nAST --&#92;u003e DOC&#92;nKIND --&#92;u003e|Gherkin| GH[&#92;&quot;Mask syntax and fixtures&#92;&quot;]&#92;nGH --&#92;u003e DOC&#92;nDOC --&#92;u003e PLAN[&#92;&quot;Per-file rules and scoped units&#92;&quot;]&#92;nPLAN --&#92;u003e LOCAL[&#92;&quot;Deterministic checks&#92;&quot;]&#92;nPLAN --&#92;u003e OPT{&#92;&quot;Selected LLM rules opted in?&#92;&quot;}&#92;nOPT --&#92;u003e|Yes| JUDGE[&#92;&quot;LiteLLM judge&#92;&quot;]&#92;nOPT --&#92;u003e|No| MERGE[&#92;&quot;Sort diagnostics&#92;&quot;]&#92;nJUDGE --&#92;u003e CHAT[&#92;&quot;Chat completions&#92;&quot;]&#92;nJUDGE --&#92;u003e DECISION[&#92;&quot;Decisions API&#92;&quot;]&#92;nCHAT --&#92;u003e MERGE&#92;nDECISION --&#92;u003e MERGE&#92;nLOCAL --&#92;u003e MERGE&#92;nMERGE --&#92;u003e REPORT[&#92;&quot;Text or JSON report&#92;&quot;]&#92;nREPORT --&#92;u003e EXIT[&#92;&quot;Exit status 0, 1, or 2&#92;&quot;]&quot;'></marimo-mermaid>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "0499cfc0d1bda07a2e6ecbcd2f794426",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"component-responsibilities\">Component responsibilities</h2>\n<span class=\"paragraph\">The CLI owns discovery, planning, orchestration, and exit status. The text layer owns segmentation and source-coordinate mapping. Rule modules declare policy; analyzers execute local checks or delegate selected scopes. Reporting is a terminal boundary, not part of rule evaluation.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "b268b4afe7ce371bc70989587c7f23cc",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='lEQa-0' random-id='5af15e4f-35c3-b89e-a841-8308a0e470a8'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Entry&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;__init__.py, __main__.py, cli.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Console and module entry points; discover inputs; resolve each file&#x27;s rule plan; map operational failures to exit 2.&#92;&quot;},{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Configuration&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;config.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Discover and validate [tool.style-audit]; hold global/per-file selectors, local vocabularies, LLM opt-in, thresholds, and transport settings.&#92;&quot;},{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Input adapters&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;docstrings.py, gherkin.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Extract Python docstrings without executing code; mask Gherkin syntax and fixture regions without running scenarios.&#92;&quot;},{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Text model&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;text.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Represent visible prose, masks, source maps, logical units, spans, and original-source evidence.&#92;&quot;},{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Policy&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;rules.py, ste_rules.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Canonical NAS, RDL, and STE rule metadata, scope, source citations, and examples.&#92;&quot;},{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Execution&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;deterministic.py, llm.py, decision_api.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Run selected local checks; call LiteLLM chat or Decisions judging by scope; validate provider responses.&#92;&quot;},{&#92;&quot;Layer&#92;&quot;:&#92;&quot;Output&#92;&quot;,&#92;&quot;Modules&#92;&quot;:&#92;&quot;models.py, reporting.py&#92;&quot;,&#92;&quot;Contract&#92;&quot;:&#92;&quot;Carry immutable Rule/Diagnostic values; sort findings; render versioned JSON or text.&#92;&quot;}]&quot;' data-total-rows='7' data-total-columns='3' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='7' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "54b7592df6f8e5e3013149c91fafb819",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"input-normalization-and-source-locations\">Input normalization and source locations</h2>\n<ul>\n<li>Markdown, reStructuredText, and plain text become prose documents. <code>TextDocument</code> masks code and quotations without splitting a logical unit into visible fragments.</li>\n<li><code>.py</code> and <code>.pyi</code> files are parsed with the AST. Only real module, class, and function docstrings are extracted; code is never imported or executed. String decoding and <code>inspect.cleandoc</code>-style cleanup use a <code>SourceMap</code> so diagnostics and evidence point to original spelling, including escapes and adjacent literals.</li>\n<li><code>.feature</code> files use a syntax-aware text pass. Gherkin keyword prefixes, tags, comments, table rows, docstrings, and fenced fixtures are masked. Heading descriptions and step prose remain auditable; scenarios and step definitions are not executed or loaded.</li>\n</ul>\n<span class=\"paragraph\">Sentence, paragraph, section, and document scopes are declared in rule metadata. The segmenter uses punctuation and structural boundaries; it is intentionally not a full linguistic parser. The selected scope controls both what text is sent remotely and the diagnostic span returned locally.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "3cc128e17d5690948a1ded8a8669e5eb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"rule-catalog\">Rule catalog</h2>\n<span class=\"paragraph\">Rule IDs, engine, and scope are runtime metadata. The summary and explorer below read the canonical <code>style_audit.rules.RULES</code> catalog.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "1414c527821290a73d8ff558fffc4683",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='SFPL-0' random-id='5e4ba606-c758-46ef-5253-424f928ce382'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;Ruleset&#92;&quot;:&#92;&quot;NAS&#92;&quot;,&#92;&quot;Registered rules&#92;&quot;:24,&#92;&quot;Deterministic&#92;&quot;:3,&#92;&quot;LLM&#92;&quot;:21,&#92;&quot;Scopes&#92;&quot;:&#92;&quot;sentence: 9, paragraph: 7, section: 4, document: 4&#92;&quot;},{&#92;&quot;Ruleset&#92;&quot;:&#92;&quot;RDL&#92;&quot;,&#92;&quot;Registered rules&#92;&quot;:7,&#92;&quot;Deterministic&#92;&quot;:0,&#92;&quot;LLM&#92;&quot;:7,&#92;&quot;Scopes&#92;&quot;:&#92;&quot;sentence: 7&#92;&quot;},{&#92;&quot;Ruleset&#92;&quot;:&#92;&quot;STE&#92;&quot;,&#92;&quot;Registered rules&#92;&quot;:61,&#92;&quot;Deterministic&#92;&quot;:2,&#92;&quot;LLM&#92;&quot;:59,&#92;&quot;Scopes&#92;&quot;:&#92;&quot;sentence: 39, paragraph: 14, section: 5, document: 3&#92;&quot;}]&quot;' data-total-rows='3' data-total-columns='5' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='false' data-page-size='3' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='false' data-show-data-types='true' data-show-page-size-selector='false' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "23e1ea2f908c89ed432b45d161e38a8e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='BYtC-0' random-id='c0c51c67-d87e-b113-8ce8-21a0b94f9b7d'><marimo-dropdown data-initial-value='[&quot;STE&quot;]' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003eExplore registered rules&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;NAS&quot;,&quot;RDL&quot;,&quot;STE&quot;]' data-allow-select-none='false' data-searchable='false' data-full-width='true' data-disabled='false'></marimo-dropdown></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "66b885c0c0f1d59a82ab622bac4302b4",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "5d9e303dd871931f5aff78b02983a84a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"ste-rule-details\">STE rule details</h3>\n<span class=\"paragraph\">Each entry carries its diagnostic ID, engine, canonical scope, upstream source, and contextual examples. STE606 counts sentences in visible paragraphs and STE801 checks semicolons locally. Other STE entries require contextual review. The supplied PDF includes Part 2's controlled dictionary, but this catalog does not parse its entries or certify vocabulary compliance.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "9cc370a417b4833ed4e8ca2595dcd1cd",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='emfo-0' random-id='72868768-bc87-d6ff-ca04-f62432a8cf49'><marimo-table data-initial-value='[]' data-label='null' data-data='&quot;[{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE101&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Lexical authorization&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE102&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Authorized part of speech&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE103&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Authorized word sense&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE104&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Authorized inflections&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE105&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Technical noun categories&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE106&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Nonlisted technical nouns&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE107&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Noun used as an action&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE108&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Approved field terminology&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;section&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE109&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Concise technical nouns&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE110&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Regional and specialist jargon&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;section&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE111&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Consistent item naming&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;document&#92;&quot;},{&#92;&quot;ID&#92;&quot;:&#92;&quot;STE112&#92;&quot;,&#92;&quot;Name&#92;&quot;:&#92;&quot;Technical verbs&#92;&quot;,&#92;&quot;Engine&#92;&quot;:&#92;&quot;llm&#92;&quot;,&#92;&quot;Scope&#92;&quot;:&#92;&quot;sentence&#92;&quot;}]&quot;' data-total-rows='61' data-total-columns='4' data-max-columns='50' data-banner-text='&quot;&quot;' data-pagination='true' data-page-size='12' data-show-filters='false' data-show-download='true' data-show-search='true' data-show-column-summaries='true' data-show-data-types='true' data-show-page-size-selector='true' data-show-column-explorer='true' data-show-chart-builder='true' data-row-headers='[]' data-hidden-columns='[]' data-has-stable-row-id='false' data-lazy='false' data-preload='false'></marimo-table></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "357988bea9ce8dffbaf0a99bacc75123",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"selection-and-execution-policy\">Selection and execution policy</h2>\n<span class=\"paragraph\"><code>config.load_config()</code> discovers the nearest <code>pyproject.toml</code> from the current working directory; <code>--config</code> selects an explicit file or directory. Exact IDs, prefixes, and case-sensitive filename-style globs select rules. Matching per-file selections are unioned and replace the global selection for that file; ignores always remove rules. CLI <code>--select</code> replaces configured global and per-file selection.</span>\n<span class=\"paragraph\">Local rules run without a provider. LLM review requires selected subjective rules plus an explicit opt-in (<code>llm.enabled</code>, <code>--llm</code>, <code>--model</code>, or explicit selection) and a model. A deterministic-only selection never initiates a remote call. The registered scope groups rules so each request contains only its matching rules and one eligible masked unit.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "82e54ced59c3c251752d9a593e767a04",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"remote-judging-and-trust-boundaries\">Remote judging and trust boundaries</h2>\n<span class=\"paragraph\">Chat models use LiteLLM chat completions and must return structured findings with exact visible evidence quotes inside the current unit. Azure MaaS Decision-1 uses LiteLLM's Decisions <code>systemone</code> API; answers must match the requested rule IDs and contain finite probabilities in <code>[0, 1]</code>. Decision findings use the inclusive configured threshold. Provider or validation failures are operational errors, not clean results.</span>\n<span class=\"paragraph\">The Decisions base, provider, and model can be overridden in project TOML; otherwise the OMP <code>azure-maas-judge</code> registry supplies defaults. A configured <code>api_key_env</code> is mandatory when selected; otherwise <code>AZURE_MAAS_JUDGE_API_KEY</code> overrides the registry key. Requests are synchronous and per eligible scope unit. The application has no cache, retry, or backend fallback.</span>\n<span class=\"paragraph\"><strong>Privacy boundary:</strong> deterministic checks stay local. Opted-in LLM rules send visible prose from the selected masked unit. Python comments and executable code, Gherkin fixtures, and masked code/quotes are excluded from model input, but masking is not sensitive-data redaction. Visible docstring and Gherkin prose can still contain private information.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "3d6b801c73b2f4b01002da79dec98b8a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"diagnostics-failures-and-verification\">Diagnostics, failures, and verification</h2>\n<span class=\"paragraph\">A <code>Diagnostic</code> carries path, rule ID, message, one-based start/end positions, evidence, and an optional fix. Reporting sorts diagnostics before rendering text or version-1 JSON.</span>\n<table>\n<thead>\n<tr>\n<th>Exit status</th>\n<th>Meaning</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>0</code></td>\n<td>No findings</td>\n</tr>\n<tr>\n<td><code>1</code></td>\n<td>Findings reported</td>\n</tr>\n<tr>\n<td><code>2</code></td>\n<td>Configuration, input, provider, or response-validation error</td>\n</tr>\n</tbody>\n</table>\n<span class=\"paragraph\">The suite combines focused unit tests with pytest-bdd acceptance scenarios. Tests use controlled providers; the Decision adapter also has a local HTTP route smoke test. No test requires provider credentials. The installed command is <code>style-audit</code>; <code>python -m style_audit</code> exposes the same CLI.</span>\n<span class=\"paragraph\">Run or export this report from the repository root:</span>\n<div class=\"language-sh codehilite\"><pre><span></span><code>uv<span class=\"w\"> </span>run<span class=\"w\"> </span>marimo<span class=\"w\"> </span>edit<span class=\"w\"> </span>notebooks/system_design.py\nuv<span class=\"w\"> </span>run<span class=\"w\"> </span>marimo<span class=\"w\"> </span>run<span class=\"w\"> </span>notebooks/system_design.py\nuv<span class=\"w\"> </span>run<span class=\"w\"> </span>marimo<span class=\"w\"> </span><span class=\"nb\">export</span><span class=\"w\"> </span>html<span class=\"w\"> </span>notebooks/system_design.py<span class=\"w\"> </span>-o<span class=\"w\"> </span>/tmp/style-audit-system-design.html\n</code></pre></div>\n<span class=\"paragraph\"><strong>Implementation references:</strong> <code>src/style_audit/cli.py</code>, <code>config.py</code>, <code>docstrings.py</code>, <code>gherkin.py</code>, <code>text.py</code>, <code>rules.py</code>, <code>ste_rules.py</code>, <code>deterministic.py</code>, <code>llm.py</code>, <code>decision_api.py</code>, <code>models.py</code>, and <code>reporting.py</code>. The checked-in <a href=\"../docs/architecture.md\">architecture guide</a> records the package contracts.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

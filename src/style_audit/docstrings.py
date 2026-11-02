@@ -173,14 +173,10 @@ def _clean_docstring(
     return "".join(cleaned), tuple(cleaned_spans)
 
 
-def extract_docstrings(path: str, source: str) -> list[TextDocument]:
-    """Extract only actual module, class, and function docstrings in source order.
-
-    Input is parsed, never executed. Each document contains decoded prose cleaned
-    with `inspect.cleandoc`. Its source map retains escapes, quotes,
-    concatenation gaps, indentation, and physical newline spelling for diagnostic
-    evidence.
-    """
+def _parse_python(
+    path: str,
+    source: str,
+) -> tuple[str, range | tuple[int, ...], tuple[int, ...], tuple[int, ...], ast.Module]:
     normalized, boundaries, starts, original_starts = _normalize_newlines(source)
     try:
         tree = ast.parse(normalized, filename=path)
@@ -200,6 +196,18 @@ def extract_docstrings(path: str, source: str) -> list[TextDocument]:
         line_index = bisect_right(original_starts, offset) - 1
         column = offset - original_starts[line_index] + 1
         raise AuditError(f"{path}:{line_index + 1}:{column}: invalid Python: {error.reason}") from error
+    return normalized, boundaries, starts, original_starts, tree
+
+
+def extract_docstrings(path: str, source: str) -> list[TextDocument]:
+    """Extract only actual module, class, and function docstrings in source order.
+
+    Input is parsed, never executed. Each document contains decoded prose cleaned
+    with `inspect.cleandoc`. Its source map retains escapes, quotes,
+    concatenation gaps, indentation, and physical newline spelling for diagnostic
+    evidence.
+    """
+    normalized, boundaries, starts, original_starts, tree = _parse_python(path, source)
 
     constants: list[ast.Constant] = []
     for node in ast.walk(tree):

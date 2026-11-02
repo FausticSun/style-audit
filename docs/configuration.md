@@ -18,12 +18,12 @@ model = "azure-maas-judge/Decision-1"
 threshold = 0.8
 ```
 
-All settings are optional. Directory scanning defaults to `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Python files audit docstrings only.
+All settings are optional. Directory scanning defaults to `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Ordinary Python files audit docstrings; recognized Marimo `.py` apps audit direct Markdown cell literals.
 `.feature` files receive a syntax-aware Gherkin pass that does not execute steps or load step definitions. It masks Gherkin keyword prefixes and full-line tags, comments, table rows, and docstring fixtures while keeping heading descriptions and step prose auditable. Explicit file paths bypass `include` filtering.
 
 Includes and excludes are arrays of non-empty strings. Path matching uses Python filename-glob matching. A bare excluded directory name matches that component at any depth, and glob patterns can exclude directory subtrees. Supplying an `include` or `exclude` array replaces that default list. Restate the defaults you still need. `output` is `text` or `json`.
 
-For docstrings only during directory traversal, use `include = ["*.py", "*.pyi"]`. To retain a prose-files-only scan including Gherkin features, use `include = ["*.md", "*.markdown", "*.rst", "*.txt", "*.feature"]`. Existing LLM opt-ins also apply to unmasked Gherkin feature prose and newly included Python docstrings. Narrow includes if those inputs must not be reviewed remotely. See [Python inputs](reference/cli.md#python-docstrings) and [Gherkin feature files](reference/cli.md#gherkin-feature-files).
+Use `include = ["*.py", "*.pyi"]` to scan Python source only. Ordinary files contribute docstrings; recognized Marimo apps contribute direct Markdown cell literals. Use `include = ["*.md", "*.markdown", "*.rst", "*.txt", "*.feature"]` for prose files and Gherkin without Python source. Existing LLM opt-ins also apply to unmasked Gherkin prose and extracted Python prose. Narrow includes if those inputs must not be reviewed remotely. See [Python inputs](reference/cli.md#python-docstrings) and [Gherkin feature files](reference/cli.md#gherkin-feature-files).
 
 The `llm` table accepts:
 

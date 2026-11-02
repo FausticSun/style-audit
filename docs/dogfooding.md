@@ -1,6 +1,6 @@
-# Dogfooding documentation and docstrings
+# Dogfooding documentation and source prose
 
-Use `style-audit` to audit its own README, documentation, Python docstrings, and Gherkin feature files. Run the installed CLI from the repository root, review each finding, and rerun after editing. Keep this separate from unit tests and the MkDocs build. Those checks do not judge the prose.
+Use `style-audit` to audit its own README, documentation, Python docstrings, Marimo Markdown cells, and Gherkin feature files. Run the installed CLI from the repository root, review each finding, and rerun after editing. Keep this separate from unit tests and the MkDocs build. Those checks do not judge the prose.
 
 ## Audit the source files
 
@@ -14,7 +14,7 @@ uv run --group docs style-audit README.md docs/ --select NAS00,STE606,STE801 --f
 
 `NAS00` selects `NAS001`–`NAS003`. `STE606` and `STE801` add local ASD-STE100 paragraph-length and semicolon checks. These selections run locally and need no credentials. They send no document text to a model. Explicit local rules keep this workflow local even if LLM review is enabled in project configuration.
 
-The directory scan includes Markdown, reStructuredText, plain-text files, Gherkin feature files, and Python docstrings, including those in `docs/hooks.py`. The `site/` directory is excluded by default. Fenced code, inline code, and paired quotation spans are masked, so rule examples inside those spans are not findings. Masking preserves logical units and original source offsets. Each selected local rule checks its registered scope and reports the exact token or emoji location. A clean result therefore applies only to the selected rules and visible prose, not every sentence or example in the documentation.
+The directory scan includes Markdown, reStructuredText, plain-text files, Gherkin feature files, ordinary Python docstrings, and direct Markdown cells in recognized Marimo apps. The `site/` directory is excluded by default. Fenced code, inline code, and paired quotation spans are masked, so rule examples inside those spans are not findings. Masking preserves logical units and original source offsets. Each selected local rule checks its registered scope and reports the exact token or emoji location. A clean result therefore applies only to the selected rules and visible prose, not every sentence or example in the documentation.
 
 ## Audit Gherkin feature files
 
@@ -35,7 +35,7 @@ Audit Python docstrings in the implementation and tests, Gherkin feature files u
 uv run style-audit src/ tests/ docs/hooks.py --select NAS00,STE606,STE801 --format json
 ```
 
-Python `.py` and `.pyi` inputs are parsed, never executed. Only real module, class, function, and async-function docstrings are extracted, while comments, assigned strings, and later string expressions are not audited. Each decoded, cleaned docstring is a separate document, with findings mapped to its original file positions and source spelling. This scan does not judge intentional rule samples or test fixtures stored in non-docstring strings. Use the separate raw-example workflow below for those.
+Ordinary Python `.py` and `.pyi` inputs are parsed, never executed. Only real module, class, function, and async-function docstrings are extracted, while comments, assigned strings, and later string expressions are not audited. Each decoded, cleaned docstring is a separate document, with findings mapped to its original file positions and source spelling. This scan does not judge intentional rule samples or test fixtures stored in non-docstring strings. Use the separate raw-example workflow below for those.
 
 For Python stdin, give a Python filename. This disposable positive control retains a discouraged term in a comment and an assigned string, but only the actual docstring should produce a finding:
 
@@ -54,6 +54,25 @@ The installed CLI ran `style-audit src/ tests/ docs/hooks.py --select NAS00 --fo
 A disposable code fixture produced `NAS001` at line 2, column 6, and `NAS003` at line 5, column 11, with exit `1`. Replacing its two docstrings produced exit `0` while leaving discouraged terms in its comment and non-docstring strings unchanged. Python stdin selected by `--stdin-filename` and default directory discovery were also exercised. An invalid Python stdin fixture exited `2`, wrote a located syntax error to stderr, and emitted no JSON report. A CRLF escaped continuation retained its original source spelling in reported evidence.
 
 These are local observations, not a live-provider review or a claim of all-rule editorial accuracy. This record was appended after those runs.
+
+## Audit Marimo Markdown cells
+
+The system-design report is a Marimo `.py` app. Style-audit parses the file without importing it: direct `mo.md()` string literals are separate documents, static f-string text is eligible, and interpolation expressions, variables, widgets, Mermaid diagrams, comments, and Python code are excluded. Findings point to the original source. An LLM opt-in sends only visible prose from the selected cell unit; treat that prose as remote input.
+
+Run the deterministic patterns locally, then explicitly opt into both requested editorial rulesets:
+
+```sh
+uv run style-audit notebooks/system_design.py --select NAS00,STE606,STE801 --format json
+uv run style-audit notebooks/system_design.py --select NAS,RDL --model azure-maas-judge/Decision-1 --format json
+```
+
+Before the second command, put the Foundry settings in the repository's `[tool.style-audit.llm.litellm]` table in `pyproject.toml`. Set `api_base` to the Foundry project endpoint and `custom_llm_provider = "azure_ai"`; see the [configuration example](configuration.md#litellm-transport-settings). The CLI discovers the nearest project `pyproject.toml`, so no `--config` flag is needed. Keep credentials in the user-level OMP registry or an environment variable, never in TOML.
+
+### Observed Marimo system-design audit
+
+The live Decision-1 run used a temporary TOML override with `custom_llm_provider = "azure_ai"` and a Foundry project `api_base`; the API key came from the user-level OMP registry. The default `openai` route first returned `ServiceUnavailableError` (HTTP `503`).
+
+The first successful audit reported seven candidates: four `NAS117` formatting findings and three `NAS120` clarity findings. Three `NAS120` sentences were revised. The full rerun exited `1` with three `NAS117` findings and no `RDL` findings. I retained those three after review: bold metadata labels aid scanning, “rule details” introduces the dynamic rules table, and “Implementation references” labels linked implementation paths. They are functional labels or headings, not mid-sentence emphasis or tiny sections; no text was changed for them.
 
 ## Audit the generated rule catalog
 
@@ -116,7 +135,7 @@ The following deterministic runs were observed during the earlier documentation 
 
 ## Review with Azure MaaS Decision-1
 
-Local rules do not assess cadence, concreteness, or other contextual guidance. Optional Decision-1 review requires the OMP model registry entry or project LiteLLM settings described in [installation](installation.md#optional-enable-llm-review). `api_base` may come from TOML or the registry. The API key comes from the registry unless `AZURE_MAAS_JUDGE_API_KEY` or a configured `api_key_env` overrides it. Protect the user-level registry and keep secrets out of the repository. The current report attempt below returned a service-unavailable error and did not validate credentials or model behavior.
+The default OpenAI-compatible Decisions route first returned a service-unavailable error. Foundry-route requests later completed; the `wages-report` and Marimo system-design results are recorded separately below. Optional Decision-1 review requires the OMP model registry entry or project LiteLLM settings described in [installation](installation.md#optional-enable-llm-review). `api_base` may come from TOML or the registry. The API key comes from the registry unless `AZURE_MAAS_JUDGE_API_KEY` or a configured `api_key_env` overrides it. Protect the user-level registry and keep secrets out of the repository.
 
 ```sh
 uv run --group docs style-audit README.md docs/ --select NAS1 --model azure-maas-judge/Decision-1 --threshold 0.8 --format json
@@ -150,7 +169,7 @@ These are current workflow instructions, not records of completed requests. Hist
 
 Earlier attempts against `wages-report/report.md` through the OpenAI Decisions adapter returned LiteLLM `ServiceUnavailableError` (HTTP `503`), including a retry with `AZURE_MAAS_JUDGE_API_KEY` unset. After configuring the Foundry project `api_base` with `custom_llm_provider = "azure_ai"`, a live document-scoped `NAS113` audit of the report at threshold `0.8` completed with exit `0` and no findings. The command unset `AZURE_MAAS_JUDGE_API_KEY`, so the request used the OMP registry key.
 
-This verifies one live Decision-1 request for the document-level “Robotic rhythm” rule, not the full configured NAS/RDL report audit. No full report audit has run with the new route.
+This verifies one live Decision-1 request for `wages-report/report.md` under the document-level “Robotic rhythm” rule, not a full `wages-report` NAS/RDL audit. No such full audit has run with the new route.
 
 
 ### Historical Decision-1 verification before scope support (pre-Azure cutover)
