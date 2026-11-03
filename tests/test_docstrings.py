@@ -18,7 +18,6 @@ class DocstringTests(unittest.TestCase):
     def setUp(self) -> None:
         for provider in (
             "style_audit.llm.litellm.completion",
-            "style_audit.llm.litellm.systemone",
         ):
             guard = patch(
                 provider,
@@ -44,12 +43,6 @@ class DocstringTests(unittest.TestCase):
             content=json.dumps({"findings": findings})
         ))])
 
-    @staticmethod
-    def _decision_response(probabilities):
-        return SimpleNamespace(answers={
-            code: SimpleNamespace(type="noul", noul=probability)
-            for code, probability in probabilities.items()
-        })
 
     def test_all_definition_kinds_and_nested_docstrings_keep_source_order(self) -> None:
         source = (
@@ -120,7 +113,7 @@ class DocstringTests(unittest.TestCase):
         )
         documents = extract_docstrings("literals.py", source)
         self.assertEqual([finding for document in documents for finding in analyze_deterministic(document)], [])
-        for model in ("openai/test-model", "azure-maas-judge/Decision-1"):
+        for model in ("openai/test-model",):
             with self.subTest(model=model):
                 self.assertEqual([
                     finding for document in documents
@@ -230,7 +223,7 @@ class DocstringTests(unittest.TestCase):
         self.assertEqual((finding.evidence, finding.line, finding.column), ("robust", 2, 11))
         self.assertEqual(document.evidence(0, len(document.text)), value)
 
-    def test_chat_and_decision_locate_a_quote_across_adjacent_literals(self) -> None:
+    def test_chat_locates_a_quote_across_adjacent_literals(self) -> None:
         source = 'def adjacent():\n    ("The report marks a pivotal " "moment.")\n'
         document, = extract_docstrings("adjacent.py", source)
         self.assertEqual(document.text, "The report marks a pivotal moment.")
@@ -238,14 +231,6 @@ class DocstringTests(unittest.TestCase):
                    return_value=self._chat_response("NAS106", "marks a pivotal moment")):
             finding, = judge_document(document, (RULES_BY_CODE["NAS106"],), "openai/test-model")
         spelling = 'marks a pivotal " "moment'
-        self.assertEqual(finding.evidence, spelling)
-        self.assertEqual((finding.line, finding.column, finding.end_line, finding.end_column),
-                         self._source_span(source, spelling))
-        with patch("style_audit.llm.litellm.systemone",
-                   return_value=self._decision_response({"NAS106": 0.9})):
-            finding, = judge_document(document, (RULES_BY_CODE["NAS106"],),
-                                     "azure-maas-judge/Decision-1")
-        spelling = 'The report marks a pivotal " "moment.'
         self.assertEqual(finding.evidence, spelling)
         self.assertEqual((finding.line, finding.column, finding.end_line, finding.end_column),
                          self._source_span(source, spelling))
@@ -269,29 +254,22 @@ class DocstringTests(unittest.TestCase):
         )
         documents = extract_docstrings("repeated.py", source)
         self.assertEqual([document.text for document in documents], ["A robust parser."] * 2)
-        for engine in ("deterministic", "chat", "decision"):
+        for engine in ("deterministic", "chat"):
             with self.subTest(engine=engine):
                 with patch("style_audit.llm.litellm.completion",
                            return_value=self._chat_response("NAS106", "robust")):
-                    with patch("style_audit.llm.litellm.systemone",
-                               return_value=self._decision_response({"NAS106": 0.9})):
-                        findings = [
-                            finding for document in documents
-                            for finding in (analyze_deterministic(document) if engine == "deterministic"
-                                            else judge_document(document, (RULES_BY_CODE["NAS106"],),
-                                                "openai/test-model" if engine == "chat"
-                                                else "azure-maas-judge/Decision-1"))
-                        ]
-                expected = [(2, 10, 2, 16), (5, 10, 5, 16)]
-                evidence = "robust"
-                if engine == "decision":
-                    expected = [(2, 8, 2, 24), (5, 8, 5, 24)]
-                    evidence = "A robust parser."
+                    findings = [
+                        finding for document in documents
+                        for finding in (analyze_deterministic(document) if engine == "deterministic"
+                                        else judge_document(document, (RULES_BY_CODE["NAS106"],),
+                                                            "openai/test-model"))
+                    ]
                 self.assertEqual(
                     [(finding.line, finding.column, finding.end_line, finding.end_column)
-                     for finding in findings], expected,
+                     for finding in findings],
+                    [(2, 10, 2, 16), (5, 10, 5, 16)],
                 )
-                self.assertEqual([finding.evidence for finding in findings], [evidence] * 2)
+                self.assertEqual([finding.evidence for finding in findings], ["robust"] * 2)
 
     def test_markdown_quoted_and_fenced_examples_remain_exempt_inside_docstrings(self) -> None:
         source = (
@@ -317,7 +295,7 @@ class DocstringTests(unittest.TestCase):
                     with self.assertRaisesRegex(AuditError, "not present in visible prose"):
                         judge_document(document, (RULES_BY_CODE["NAS106"],), "openai/test-model")
 
-    def test_chat_and_decision_quotes_map_decoded_escapes_to_original_spelling(self) -> None:
+    def test_chat_quotes_map_decoded_escapes_to_original_spelling(self) -> None:
         source = 'def escaped():\n    """A \\u0072obust\\nparser."""\n'
         document, = extract_docstrings("escaped.py", source)
         self.assertEqual(document.text, "A robust\nparser.")
@@ -325,14 +303,6 @@ class DocstringTests(unittest.TestCase):
                    return_value=self._chat_response("NAS106", "robust\nparser")):
             finding, = judge_document(document, (RULES_BY_CODE["NAS106"],), "openai/test-model")
         spelling = r"\u0072obust\nparser"
-        self.assertEqual(finding.evidence, spelling)
-        self.assertEqual((finding.line, finding.column, finding.end_line, finding.end_column),
-                         self._source_span(source, spelling))
-        with patch("style_audit.llm.litellm.systemone",
-                   return_value=self._decision_response({"NAS101": 0.9})):
-            finding, = judge_document(document, (RULES_BY_CODE["NAS101"],),
-                                     "azure-maas-judge/Decision-1")
-        spelling = r"A \u0072obust\nparser."
         self.assertEqual(finding.evidence, spelling)
         self.assertEqual((finding.line, finding.column, finding.end_line, finding.end_column),
                          self._source_span(source, spelling))
@@ -367,45 +337,34 @@ class DocstringTests(unittest.TestCase):
             "The second report changed. Details follow.\n\n    Second appendix stays.",
             "The second report changed. Details follow.",
         ]
-        for engine in ("chat", "decision"):
-            with self.subTest(engine=engine):
-                contexts = []
+        contexts = []
 
-                def chat_provider(*, messages, **kwargs):
-                    state = json.loads(messages[-1]["content"])
-                    index = len(contexts)
-                    self.assertEqual(state, expected_contexts[index])
-                    contexts.append(state)
-                    self.assertNotIn("SECRET_", json.dumps(messages))
-                    if index in (0, 1, 3, 4):
-                        code = "NAS113" if index in (0, 3) else "NAS101"
-                        return self._chat_response(code, expected_contexts[index]["text"])
-                    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
-                        content='{"findings":[]}'
-                    ))])
+        def chat_provider(*, messages, **kwargs):
+            state = json.loads(messages[-1]["content"])
+            index = len(contexts)
+            self.assertEqual(state, expected_contexts[index])
+            contexts.append(state)
+            self.assertNotIn("SECRET_", json.dumps(messages))
+            if index in (0, 1, 3, 4):
+                code = "NAS113" if index in (0, 3) else "NAS101"
+                return self._chat_response(code, expected_contexts[index]["text"])
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content='{"findings":[]}'
+            ))])
 
-                def decision_provider(*, state, questions, **kwargs):
-                    index = len(contexts)
-                    self.assertEqual(state, expected_contexts[index])
-                    contexts.append(state)
-                    code = "NAS113" if index in (0, 3) else "NAS101"
-                    probability = 0.9 if index in (0, 1, 3, 4) else 0.1
-                    return self._decision_response({code: probability})
-
-                with patch("style_audit.llm.litellm.completion", side_effect=chat_provider):
-                    with patch("style_audit.llm.litellm.systemone", side_effect=decision_provider):
-                        findings = [finding for document in documents for finding in judge_document(
-                            document, rules, "openai/test-model" if engine == "chat"
-                            else "azure-maas-judge/Decision-1"
-                        )]
-                self.assertEqual(contexts, expected_contexts)
-                self.assertEqual([finding.code for finding in findings], ["NAS113", "NAS101"] * 2)
-                self.assertEqual([finding.evidence for finding in findings], expected_evidence)
-                self.assertEqual(
-                    [(finding.line, finding.column, finding.end_line, finding.end_column)
-                     for finding in findings],
-                    [self._source_span(source, evidence) for evidence in expected_evidence],
-                )
+        with patch("style_audit.llm.litellm.completion", side_effect=chat_provider):
+            findings = [
+                finding for document in documents
+                for finding in judge_document(document, rules, "openai/test-model")
+            ]
+        self.assertEqual(contexts, expected_contexts)
+        self.assertEqual([finding.code for finding in findings], ["NAS113", "NAS101"] * 2)
+        self.assertEqual([finding.evidence for finding in findings], expected_evidence)
+        self.assertEqual(
+            [(finding.line, finding.column, finding.end_line, finding.end_column)
+             for finding in findings],
+            [self._source_span(source, evidence) for evidence in expected_evidence],
+        )
 
     def test_chat_cannot_cite_excluded_executable_code_or_another_function(self) -> None:
         source = (

@@ -229,36 +229,15 @@ class TextScopeTests(unittest.TestCase):
 
 
 class ScopedJudgmentTests(unittest.TestCase):
-    BACKENDS = ("decision", "chat")
-
-    @staticmethod
-    def _decision_response(probabilities):
-        return SimpleNamespace(answers={
-            code: SimpleNamespace(type="noul", noul=probability)
-            for code, probability in probabilities.items()
-        })
-
     @staticmethod
     def _chat_response(findings):
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
             content=json.dumps({"findings": findings})
         ))])
 
-    def judge_with_fixture(self, document, codes, backend, evaluate):
-        """A provider identifies fixture semantics, rather than echoing requested inputs."""
+    def judge_with_fixture(self, document, codes, evaluate):
+        """A controlled chat response identifies fixture semantics, not requested inputs."""
         rules = tuple(RULES_BY_CODE[code] for code in codes)
-        if backend == "decision":
-            def decision_provider(*, state, questions, **kwargs):
-                context = "\n".join(value for key, value in state.items() if key != "scope" and isinstance(value, str))
-                return self._decision_response({
-                    code: 0.95 if evaluate(code, context, state["scope"]) is not None else 0.05
-                    for code in questions
-                })
-
-            with patch("style_audit.llm.litellm.systemone", side_effect=decision_provider), patch(
-                "style_audit.llm.litellm.completion", side_effect=AssertionError("Unexpected chat request")
-            ):
-                return judge_document(document, rules, "azure-maas-judge/Decision-1")
 
         def chat_provider(*, messages, **kwargs):
             user_message = next(message for message in messages if message["role"] == "user")
@@ -275,9 +254,7 @@ class ScopedJudgmentTests(unittest.TestCase):
                     findings.append({"code": code, "evidence": evidence, "reason": "The fixture contains the rule's contextual pattern."})
             return self._chat_response(findings)
 
-        with patch("style_audit.llm.litellm.completion", side_effect=chat_provider), patch(
-            "style_audit.llm.litellm.systemone", side_effect=AssertionError("Unexpected decision request")
-        ):
+        with patch("style_audit.llm.litellm.completion", side_effect=chat_provider):
             return judge_document(document, rules, "openai/test-model")
 
     def assert_finding_spans(self, document, findings, expected):
@@ -323,23 +300,16 @@ class ScopedJudgmentTests(unittest.TestCase):
                 return "Each build took ten seconds."
             return None
 
-        for backend in self.BACKENDS:
-            with self.subTest(backend=backend):
-                findings = self.judge_with_fixture(document, ("NAS101", "NAS106", "NAS110", "NAS113"), backend, evaluate)
-                expected = (
-                    [("NAS101", contrast), ("NAS106", "The release marks a pivotal moment."),
-                     ("NAS110", tools), ("NAS113", source.strip())]
-                    if backend == "decision" else
-                    [("NAS101", "This is not a speed upgrade.\r\nIt is a safety upgrade."),
-                     ("NAS106", "marks a pivotal moment"),
-                     ("NAS110", "QueueKit, the dispatcher, retried the same job."),
-                     ("NAS113", "Each build took ten seconds.")]
-                )
-                self.assert_finding_spans(document, findings, expected)
-                if backend == "decision":
-                    for finding in findings:
-                        self.assertIn(RULES_BY_CODE[finding.code].scope, finding.message)
-                        self.assertEqual(finding.fix, "")
+        findings = self.judge_with_fixture(
+            document, ("NAS101", "NAS106", "NAS110", "NAS113"), evaluate,
+        )
+        expected = [
+            ("NAS101", "This is not a speed upgrade.\r\nIt is a safety upgrade."),
+            ("NAS106", "marks a pivotal moment"),
+            ("NAS110", "QueueKit, the dispatcher, retried the same job."),
+            ("NAS113", "Each build took ten seconds."),
+        ]
+        self.assert_finding_spans(document, findings, expected)
 
     def test_context_in_other_paragraphs_or_sections_cannot_complete_a_narrower_pattern(self) -> None:
         source = (
@@ -359,9 +329,7 @@ class ScopedJudgmentTests(unittest.TestCase):
                 return "QueueKit, the dispatcher, retried the same job."
             return None
 
-        for backend in self.BACKENDS:
-            with self.subTest(backend=backend):
-                self.assertEqual(self.judge_with_fixture(document, ("NAS101", "NAS110"), backend, evaluate), [])
+        self.assertEqual(self.judge_with_fixture(document, ("NAS101", "NAS110"), evaluate), [])
 
     def test_inline_masks_preserve_paragraph_context_without_becoming_judged_evidence(self) -> None:
         paragraph = 'This is not a speed upgrade.\n`upgrade()`\n“Quoted example.”\nIt is a safety upgrade.'
@@ -375,17 +343,13 @@ class ScopedJudgmentTests(unittest.TestCase):
                 return "It is a safety upgrade."
             return None
 
-        for backend in self.BACKENDS:
-            with self.subTest(backend=backend):
-                findings = self.judge_with_fixture(document, ("NAS101",), backend, evaluate)
-                evidence = paragraph if backend == "decision" else "It is a safety upgrade."
-                self.assert_finding_spans(document, findings, [("NAS101", evidence)])
-                masked_context = TextDocument(
-                    path="draft.md",
-                    text='This is not a speed upgrade. "It is a safety upgrade."',
-                )
-                self.assertEqual(self.judge_with_fixture(masked_context, ("NAS101",), backend, evaluate), [])
-
+        findings = self.judge_with_fixture(document, ("NAS101",), evaluate)
+        self.assert_finding_spans(document, findings, [("NAS101", "It is a safety upgrade.")])
+        masked_context = TextDocument(
+            path="draft.md",
+            text='This is not a speed upgrade. "It is a safety upgrade."',
+        )
+        self.assertEqual(self.judge_with_fixture(masked_context, ("NAS101",), evaluate), [])
     def test_repeated_unicode_evidence_is_anchored_to_each_current_sentence(self) -> None:
         sentence = "🌿 Café marks a pivotal moment."
         source = " \t" + sentence + "\r\n\r\nNo claim here.\r\n\r\n  " + sentence + "\r\n"
@@ -397,11 +361,10 @@ class ScopedJudgmentTests(unittest.TestCase):
         def evaluate(code, text, scope):
             return "marks a pivotal moment" if "marks a pivotal moment" in text else None
 
-        for backend in self.BACKENDS:
-            with self.subTest(backend=backend):
-                findings = self.judge_with_fixture(document, ("NAS106",), backend, evaluate)
-                evidence = sentence if backend == "decision" else "marks a pivotal moment"
-                self.assert_finding_spans(document, findings, [("NAS106", evidence), ("NAS106", evidence)])
+        findings = self.judge_with_fixture(document, ("NAS106",), evaluate)
+        self.assert_finding_spans(
+            document, findings, [("NAS106", "marks a pivotal moment"), ("NAS106", "marks a pivotal moment")],
+        )
 
     def test_chat_cannot_cite_visible_evidence_from_another_sentence(self) -> None:
         document = TextDocument(
@@ -415,7 +378,7 @@ class ScopedJudgmentTests(unittest.TestCase):
             return None
 
         with self.assertRaises(AuditError):
-            self.judge_with_fixture(document, ("NAS106",), "chat", evaluate)
+            self.judge_with_fixture(document, ("NAS106",), evaluate)
 
     def test_selected_rules_cannot_answer_for_another_scope(self) -> None:
         document = TextDocument(
@@ -423,11 +386,6 @@ class ScopedJudgmentTests(unittest.TestCase):
             text="This is not a speed upgrade. It is a safety upgrade.",
         )
         rules = (RULES_BY_CODE["NAS101"], RULES_BY_CODE["NAS106"])
-
-        def decision_provider(*, state, questions, **kwargs):
-            if state["scope"] == "sentence":
-                return self._decision_response({"NAS101": 0.95})
-            return self._decision_response({code: 0.05 for code in questions})
 
         def chat_provider(*, messages, **kwargs):
             state = json.loads(next(message["content"] for message in messages if message["role"] == "user"))
@@ -438,14 +396,9 @@ class ScopedJudgmentTests(unittest.TestCase):
                 }])
             return self._chat_response([])
 
-        for backend, target, provider, model in (
-            ("decision", "style_audit.llm.litellm.systemone", decision_provider, "azure-maas-judge/Decision-1"),
-            ("chat", "style_audit.llm.litellm.completion", chat_provider, "openai/test-model"),
-        ):
-            with self.subTest(backend=backend):
-                with patch(target, side_effect=provider):
-                    with self.assertRaises(AuditError):
-                        judge_document(document, rules, model)
+        with patch("style_audit.llm.litellm.completion", side_effect=chat_provider):
+            with self.assertRaises(AuditError):
+                judge_document(document, rules, "openai/test-model")
 
 
 class ScopedDeterministicTests(unittest.TestCase):
@@ -478,9 +431,9 @@ class ScopedDeterministicTests(unittest.TestCase):
         )
 
     def test_generated_sample_with_nested_fences_never_leaks_into_prose_audit(self) -> None:
-        hooks = runpy.run_path(str(Path(__file__).resolve().parents[1] / "docs" / "hooks.py"))
+        renderer = runpy.run_path(str(Path(__file__).resolve().parents[1] / "docs" / "render_rule_cards.py"))
         sample = "# 🚀 Example\n```text\nWe utilize samples.\n```\n````text\nThis serves as a demo.\n````\n~~~~~text\nWe delve into details.\n~~~~~\nA robust example."
-        rendered = hooks["_sample"](sample)
+        rendered = renderer["_sample"](sample)
         document = TextDocument(
             path="rules.md",
             text=rendered + "\n\nWe utilize the parser.",

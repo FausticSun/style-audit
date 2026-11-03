@@ -16,7 +16,12 @@ from pydantic import (
     model_validator,
 )
 
-from .models import AuditError
+from .models import AuditError, Rule
+from .rule_catalog import (
+    load_project_rule_catalogs,
+    load_project_rule_overrides,
+    load_rule_catalog,
+)
 
 DEFAULT_INCLUDE = ("*.md", "*.markdown", "*.rst", "*.txt", "*.py", "*.pyi", "*.feature")
 DEFAULT_EXCLUDE = (
@@ -50,7 +55,6 @@ class LiteLLMConfig(BaseModel):
     api_base: str | None = None
     api_key_env: str | None = None
     custom_llm_provider: str | None = None
-    decision_model: str | None = None
     timeout: float | None = None
     temperature: float = 0.0
 
@@ -75,7 +79,7 @@ class LiteLLMConfig(BaseModel):
         except AuditError as exc:
             raise ValueError(str(exc)) from exc
 
-    @field_validator("api_key_env", "custom_llm_provider", "decision_model", mode="before")
+    @field_validator("api_key_env", "custom_llm_provider", mode="before")
     @classmethod
     def validate_optional_strings(cls, value: object, info: ValidationInfo) -> str | None:
         if value is None:
@@ -126,9 +130,12 @@ class AuditConfig(BaseModel):
     output: Literal["text", "json"] = "text"
     llm_enabled: bool = False
     llm_model: str | None = None
-    llm_threshold: float = Field(default=0.8, ge=0, le=1)
     llm_litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
+    llm_api: Literal["completion", "decisions"] = "completion"
+    llm_threshold: float = 0.82
     per_file_select: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    project_rules: tuple[Rule, ...] = ()
+    overridden_rules: tuple[Rule, ...] = ()
     nas_allowed_words: tuple[str, ...] = ()
     nas_disallowed_words: tuple[str, ...] = ()
     ste_allowed_words: tuple[str, ...] = ()
@@ -173,12 +180,13 @@ class _STEWordSettings(_WordSettings):
 
 
 class _LLMSettings(BaseModel):
-    model_config = ConfigDict(extra="ignore", strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     enabled: bool = False
     model: str | None = None
-    threshold: float = 0.8
     litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
+    api: Literal["completion", "decisions"] = "completion"
+    threshold: float = 0.82
 
     @field_validator("enabled", mode="before")
     @classmethod
@@ -199,15 +207,17 @@ class _LLMSettings(BaseModel):
     @field_validator("threshold", mode="before")
     @classmethod
     def validate_threshold(cls, value: object) -> float:
+        message = "[tool.style-audit.llm].threshold must be a finite number from 0 to 1"
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError("[tool.style-audit.llm].threshold must be a finite number between 0 and 1")
+            raise ValueError(message)
         try:
             number = float(value)
         except (OverflowError, ValueError) as exc:
-            raise ValueError("[tool.style-audit.llm].threshold must be a finite number between 0 and 1") from exc
+            raise ValueError(message) from exc
         if not math.isfinite(number) or not 0 <= number <= 1:
-            raise ValueError("[tool.style-audit.llm].threshold must be a finite number between 0 and 1")
+            raise ValueError(message)
         return number
+
 
     @field_validator("litellm", mode="before")
     @classmethod
@@ -220,6 +230,8 @@ class _LLMSettings(BaseModel):
     def require_model_when_enabled(self) -> "_LLMSettings":
         if self.enabled and self.model is None:
             raise ValueError("[tool.style-audit.llm].model is required when LLM judging is enabled")
+        if self.api == "decisions" and self.litellm.temperature != 0:
+            raise ValueError("[tool.style-audit.llm.litellm].temperature applies only to completion judging")
         return self
 
 
@@ -233,6 +245,8 @@ class _ProjectSettings(BaseModel):
     output: Literal["text", "json"] = "text"
     llm: _LLMSettings = Field(default_factory=_LLMSettings)
     per_file_select: tuple[tuple[str, tuple[str, ...]], ...] = Field(default=(), alias="per-file-select")
+    rule_catalogs: tuple[str, ...] = Field(default=(), alias="rule-catalogs")
+    rule_overrides: tuple[str, ...] = Field(default=(), alias="rule-overrides")
     no_ai_slop: _NASWordSettings = Field(default_factory=_NASWordSettings, alias="no-ai-slop")
     ste: _STEWordSettings = Field(default_factory=_STEWordSettings)
 
@@ -241,6 +255,16 @@ class _ProjectSettings(BaseModel):
     def validate_rule_lists(cls, value: object, info: ValidationInfo) -> tuple[str, ...]:
         defaults = {"select": (), "ignore": (), "include": DEFAULT_INCLUDE, "exclude": DEFAULT_EXCLUDE}
         return _string_list(value, info.field_name, defaults[info.field_name], section="tool.style-audit")
+
+    @field_validator("rule_catalogs", mode="before")
+    @classmethod
+    def validate_rule_catalogs(cls, value: object) -> tuple[str, ...]:
+        return _string_list(value, "rule-catalogs", (), section="tool.style-audit")
+
+    @field_validator("rule_overrides", mode="before")
+    @classmethod
+    def validate_rule_overrides(cls, value: object) -> tuple[str, ...]:
+        return _string_list(value, "rule-overrides", (), section="tool.style-audit")
 
     @field_validator("output", mode="before")
     @classmethod
@@ -300,6 +324,21 @@ def _parse_config(path: Path) -> AuditConfig:
         raise AuditError(f"[tool.style-audit] in {path} must be a table")
     try:
         settings = _ProjectSettings.model_validate(data)
+        project_rules = ()
+        overridden_rules = ()
+        bundled_rules = load_rule_catalog() if settings.rule_catalogs or settings.rule_overrides else ()
+        if settings.rule_catalogs:
+            project_rules = load_project_rule_catalogs(
+                path.parent,
+                settings.rule_catalogs,
+                existing_codes=(rule.code for rule in bundled_rules),
+            )
+        if settings.rule_overrides:
+            overridden_rules = load_project_rule_overrides(
+                path.parent,
+                settings.rule_overrides,
+                (*bundled_rules, *project_rules),
+            )
         return AuditConfig(
             root=path.parent.resolve(),
             select=settings.select,
@@ -309,9 +348,12 @@ def _parse_config(path: Path) -> AuditConfig:
             output=settings.output,
             llm_enabled=settings.llm.enabled,
             llm_model=settings.llm.model,
-            llm_threshold=settings.llm.threshold,
             llm_litellm=settings.llm.litellm,
+            llm_api=settings.llm.api,
+            llm_threshold=settings.llm.threshold,
             per_file_select=settings.per_file_select,
+            project_rules=project_rules,
+            overridden_rules=overridden_rules,
             nas_allowed_words=settings.no_ai_slop.allowed_words,
             nas_disallowed_words=settings.no_ai_slop.disallowed_words,
             ste_allowed_words=settings.ste.allowed_words,

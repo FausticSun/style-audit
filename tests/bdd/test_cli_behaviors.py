@@ -34,20 +34,16 @@ def provide_stdin(docstring):
     return docstring + "\n"
 
 
-@given(parsers.parse("a decision judge returning probability {probability:g}"))
-def decision_judge(providers, probability):
-    providers["decision"].side_effect = lambda **kwargs: SimpleNamespace(answers={
-        code: SimpleNamespace(type="noul", noul=probability)
-        for code in kwargs["questions"]
-    })
-
-
-@given("a decision judge that fails after finding a violation")
+@given("a chat judge that fails after finding a violation")
 def failing_judge(providers):
-    providers["decision"].side_effect = [
-        SimpleNamespace(answers={"NAS106": SimpleNamespace(type="noul", noul=0.95)}),
-        RuntimeError("Decision provider unavailable"),
-    ]
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+        content=json.dumps({"findings": [{
+            "code": "NAS106",
+            "evidence": "The launch marks a pivotal moment.",
+            "reason": "This announces importance without a concrete fact.",
+        }]})
+    ))])
+    providers["chat"].side_effect = [response, RuntimeError("Chat provider unavailable")]
 
 
 @given("a chat judge returning:")
@@ -108,12 +104,9 @@ def check_error_identifier(audit_result, identifier):
 @then("no remote judge was called")
 def check_local_only(providers):
     providers["chat"].assert_not_called()
-    providers["decision"].assert_not_called()
 
 
 @then(parsers.parse('provider requests exclude "{private_text}"'))
 def check_request_privacy(providers, private_text):
-    for call in providers["decision"].call_args_list:
-        assert private_text not in json.dumps(call.kwargs["state"])
     for call in providers["chat"].call_args_list:
         assert private_text not in json.dumps(call.kwargs["messages"])

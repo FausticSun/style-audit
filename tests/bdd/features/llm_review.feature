@@ -10,7 +10,7 @@ Feature: Explicit and source-grounded editorial review
       [tool.style-audit.per-file-select]
       "review/*.md" = ["NAS106"]
       [tool.style-audit.llm]
-      model = "azure-maas-judge/Decision-1"
+      model = "openai/test-model"
       """
     And a file "local.md" containing:
       """
@@ -20,7 +20,10 @@ Feature: Explicit and source-grounded editorial review
       """
       The launch marks a pivotal moment.
       """
-    And a decision judge returning probability 0.95
+    And a chat judge returning:
+      """
+      {"findings":[{"code":"NAS106","evidence":"The launch marks a pivotal moment.","reason":"This announces importance without a concrete fact."}]}
+      """
     When I run style-audit . --format json
     Then the audit exits with 1
     And the report contains exactly these findings:
@@ -43,28 +46,6 @@ Feature: Explicit and source-grounded editorial review
     Then there is an operational error and no report
     And no remote judge was called
 
-  Scenario Outline: The decision threshold includes equality
-    Given the project configuration:
-      """
-      [tool.style-audit]
-      select = ["NAS106"]
-      [tool.style-audit.llm]
-      model = "azure-maas-judge/Decision-1"
-      threshold = 0.8
-      """
-    And a file "draft.md" containing:
-      """
-      The launch marks a pivotal moment.
-      """
-    And a decision judge returning probability <probability>
-    When I run style-audit draft.md --format json
-    Then the audit exits with <status>
-    And the reported rule IDs are "<rules>"
-
-    Examples:
-      | probability | status | rules  |
-      | 0.79        | 0      | none   |
-      | 0.8         | 1      | NAS106 |
 
   Scenario: Fabricated chat evidence is an error rather than a clean report
     Given the project configuration:
@@ -91,17 +72,17 @@ Feature: Explicit and source-grounded editorial review
       [tool.style-audit]
       select = ["NAS106"]
       [tool.style-audit.llm]
-      model = "azure-maas-judge/Decision-1"
+      model = "openai/test-model"
       """
     And a file "draft.md" containing:
       """
       The launch marks a pivotal moment.
       The next release ships tomorrow.
       """
-    And a decision judge that fails after finding a violation
+    And a chat judge that fails after finding a violation
     When I run style-audit draft.md --format json
     Then there is an operational error and no report
-    And the error identifies "LiteLLM Decisions call failed"
+    And the error identifies "LiteLLM provider call failed"
 
   Scenario: A selected STE context rule accepts source evidence
     Given a file "draft.md" containing:

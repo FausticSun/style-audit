@@ -8,11 +8,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from click.testing import CliRunner
 from pydantic import ValidationError
 from style_audit.cli import CLIOptions, build_cli, main, run
 from style_audit.config import AuditConfig, LiteLLMConfig, load_config
-from style_audit.decision_api import DecisionAPISettings, load_decision_api
 from style_audit.models import AuditError
 
 
@@ -20,6 +18,37 @@ def _parse_options(arguments: list[str]) -> CLIOptions:
     command = build_cli()
     with command.make_context("style-audit", list(arguments)) as context:
         return CLIOptions(**context.params)
+
+_PROJECT_RULESET = """schema_version: 1
+rules:
+  - code: TEAM001
+    name: Weak intensifier
+    engine: deterministic
+    scope: sentence
+    source: https://example.invalid/team-style#intensifiers
+    description: Flag the weak intensifier very.
+    detector:
+      kind: regex
+      pattern: '(?<!\\w)very(?!\\w)'
+      target: unit
+      message: Replace {evidence!r} with a specific description.
+      fix: State the measurable property directly.
+    examples:
+      - before: The service is very fast.
+        after: The service is fast.
+        explanation: Replace the vague intensifier with a direct claim.
+  - code: TEAM002
+    name: Unsupported success claim
+    engine: llm
+    scope: sentence
+    source: https://example.invalid/team-style#claims
+    prompt: >-
+      Flag unsupported claims of success without an observable result. Preserve supported outcomes.
+    examples:
+      - before: The launch was a complete success.
+        after: The launch shipped on 12 May.
+        explanation: Replace the unsupported evaluation with an observable outcome.
+"""
 
 
 class ConfigTests(unittest.TestCase):
@@ -36,6 +65,75 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.root, project)
             self.assertEqual(config.select, ("NAS001",))
             self.assertEqual(config.output, "json")
+
+    def test_project_rule_catalogs_load_relative_paths_and_reject_unsafe_or_duplicate_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            catalog = root / "rules" / "team.yaml"
+            catalog.parent.mkdir()
+            catalog.write_text(_PROJECT_RULESET, encoding="utf-8")
+            config_path = root / "pyproject.toml"
+            config_path.write_text(
+                '[tool.style-audit]\nrule-catalogs = ["rules/team.yaml"]\n',
+                encoding="utf-8",
+            )
+
+            config = load_config(root)
+            self.assertEqual([rule.code for rule in config.project_rules], ["TEAM001", "TEAM002"])
+
+            for filename in ("../outside.yaml", str(catalog.resolve())):
+                with self.subTest(filename=filename):
+                    config_path.write_text(
+                        f'[tool.style-audit]\nrule-catalogs = ["{filename}"]\n',
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(AuditError, "project-relative"):
+                        load_config(root)
+
+            config_path.write_text(
+                '[tool.style-audit]\nrule-catalogs = ["rules/team.yaml"]\n',
+                encoding="utf-8",
+            )
+            catalog.write_text(_PROJECT_RULESET.replace("TEAM001", "NAS001"), encoding="utf-8")
+            with self.assertRaisesRegex(AuditError, "defined more than once"):
+                load_config(root)
+
+            catalog.write_text(_PROJECT_RULESET, encoding="utf-8")
+            second_catalog = root / "rules" / "another.yaml"
+            second_catalog.write_text(_PROJECT_RULESET, encoding="utf-8")
+            config_path.write_text(
+                '[tool.style-audit]\nrule-catalogs = ["rules/team.yaml", "rules/another.yaml"]\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(AuditError, "defined more than once"):
+                load_config(root)
+
+            config_path.write_text(
+                '[tool.style-audit]\nrule-catalogs = ["rules/missing.yaml"]\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(AuditError, "cannot read project YAML rule catalog"):
+                load_config(root)
+
+    def test_project_rule_catalogs_reject_symlink_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            root = base / "project"
+            (root / "rules").mkdir(parents=True)
+            outside = base / "outside.yaml"
+            outside.write_text(_PROJECT_RULESET, encoding="utf-8")
+            link = root / "rules" / "outside.yaml"
+            try:
+                link.symlink_to(outside)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest(f"symlinks are unavailable: {exc}")
+            (root / "pyproject.toml").write_text(
+                '[tool.style-audit]\nrule-catalogs = ["rules/outside.yaml"]\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AuditError, "must resolve inside"):
+                load_config(root)
 
     def test_invalid_toml_or_llm_configuration_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -75,41 +173,10 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(AuditError, "disallowed-words must be an array"):
                 load_config(root)
 
-    def test_threshold_defaults_and_numeric_configuration(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            self.assertEqual(load_config(root).llm_threshold, 0.8)
-            config_path = root / "pyproject.toml"
-            for literal, expected in (("0", 0.0), ("1", 1.0), ("0.65", 0.65)):
-                with self.subTest(literal=literal):
-                    config_path.write_text(
-                        f"[tool.style-audit.llm]\nthreshold = {literal}\n", encoding="utf-8"
-                    )
-                    config = load_config(root)
-                    self.assertEqual(config.llm_threshold, expected)
-                    self.assertIsInstance(config.llm_threshold, float)
-
-    def test_threshold_configuration_rejects_non_numeric_nonfinite_and_out_of_range(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            config_path = root / "pyproject.toml"
-            for literal in (
-                "true", "false", '"0.8"', "[]", "{}",
-                "nan", "inf", "-inf", "-0.01", "1.01",
-            ):
-                with self.subTest(literal=literal):
-                    config_path.write_text(
-                        f"[tool.style-audit.llm]\nthreshold = {literal}\n", encoding="utf-8"
-                    )
-                    with self.assertRaisesRegex(AuditError, "threshold"):
-                        load_config(root)
 
     def test_pydantic_configuration_models_are_strict_and_immutable(self) -> None:
         with self.assertRaises(ValidationError):
             LiteLLMConfig(timeout=True)
-        with self.assertRaises(ValidationError):
-            AuditConfig(root=Path.cwd(), llm_threshold=1.01)
-
         config = AuditConfig(root=Path.cwd())
         with self.assertRaises(ValidationError):
             config.output = "json"
@@ -124,6 +191,27 @@ class ConfigTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(AuditError, "unsupported setting"):
                 load_config(root)
+
+    def test_generic_litellm_provider_settings_are_loaded(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text(
+                '[tool.style-audit.llm]\nmodel = "openai/test-model"\n'
+                '[tool.style-audit.llm.litellm]\n'
+                'api_base = "https://provider.example/v1"\n'
+                'api_key_env = "STYLE_AUDIT_TEST_API_KEY"\n'
+                'custom_llm_provider = "openai"\n'
+                'timeout = 12.0\n'
+                'temperature = 0.0\n',
+                encoding="utf-8",
+            )
+            config = load_config(root).llm_litellm
+
+        self.assertEqual(config.api_base, "https://provider.example/v1")
+        self.assertEqual(config.api_key_env, "STYLE_AUDIT_TEST_API_KEY")
+        self.assertEqual(config.custom_llm_provider, "openai")
+        self.assertEqual(config.timeout, 12.0)
+        self.assertEqual(config.temperature, 0.0)
 
 
 class CliTests(unittest.TestCase):
@@ -165,6 +253,192 @@ class CliTests(unittest.TestCase):
             self.assertEqual([item["path"] for item in report["findings"]], ["docs/draft.md", "docs/ignored.txt"])
             self.assertEqual({item["code"] for item in report["findings"]}, {"NAS001"})
 
+    def test_project_rulesets_run_custom_deterministic_and_llm_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            rules = root / "rules"
+            rules.mkdir()
+            (rules / "team.yaml").write_text(_PROJECT_RULESET, encoding="utf-8")
+            (root / "pyproject.toml").write_text(
+                '[tool.style-audit]\n'
+                'rule-catalogs = ["rules/team.yaml"]\n'
+                'select = ["TEAM"]\n'
+                'output = "json"\n'
+                '[tool.style-audit.llm]\n'
+                'model = "openai/test-model"\n',
+                encoding="utf-8",
+            )
+            nested = root / "docs"
+            nested.mkdir()
+            (nested / "draft.md").write_text("The launch was very successful.\n", encoding="utf-8")
+            response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content=json.dumps({
+                    "findings": [{
+                        "code": "TEAM002",
+                        "evidence": "The launch was very successful.",
+                        "reason": "The sentence makes an unsupported success claim without an observed result.",
+                    }],
+                }),
+            ))])
+
+            with patch("style_audit.llm.litellm.completion", return_value=response) as provider:
+                code, output = run(_parse_options([str(nested / "draft.md")]), cwd=nested)
+
+        findings = {finding["code"]: finding for finding in json.loads(output)["findings"]}
+        self.assertEqual(code, 1)
+        self.assertEqual(set(findings), {"TEAM001", "TEAM002"})
+        self.assertEqual(
+            (findings["TEAM001"]["evidence"], findings["TEAM001"]["line"], findings["TEAM001"]["column"]),
+            ("very", 1, 16),
+        )
+        self.assertEqual(
+            (findings["TEAM002"]["evidence"], findings["TEAM002"]["line"], findings["TEAM002"]["column"]),
+            ("The launch was very successful.", 1, 1),
+        )
+        provider.assert_called_once()
+        prompt = "\n".join(message["content"] for message in provider.call_args.kwargs["messages"])
+        self.assertIn("Flag unsupported claims of success", prompt)
+        self.assertNotIn("NAS001", prompt)
+
+
+    def test_project_rule_overrides_merge_regex_terms_and_llm_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            rules = root / "rules"
+            rules.mkdir()
+            (rules / "team.yaml").write_text(_PROJECT_RULESET, encoding="utf-8")
+            (rules / "overrides.yaml").write_text(
+                "schema_version: 1\n"
+                "overrides:\n"
+                "  - code: TEAM001\n"
+                "    name: Project speed wording\n"
+                "    description: Review direct speed terms.\n"
+                "    detector:\n"
+                "      pattern: '(?<!\\w)fast(?!\\w)'\n"
+                "      flags: [ignorecase]\n"
+                "      message: Review {evidence!r}.\n"
+                "      fix: State the measured performance.\n"
+                "    additional-terms: [rapid]\n"
+                "    examples:\n"
+                "      - before: The service is fast.\n"
+                "        after: The service transfers 4 MB/s.\n"
+                "        explanation: Replace evaluation with a measured result.\n"
+                "  - code: TEAM002\n"
+                "    name: Evidence-based launch claims\n"
+                "    prompt: Flag unsupported launch claims; preserve observable outcomes.\n"
+                "    examples:\n"
+                "      - before: The launch was a complete success.\n"
+                "        after: The launch shipped on 12 May.\n"
+                "        explanation: Replace the unsupported evaluation with an outcome.\n",
+                encoding="utf-8",
+            )
+            (root / "pyproject.toml").write_text(
+                '[tool.style-audit]\n'
+                'rule-catalogs = ["rules/team.yaml"]\n'
+                'rule-overrides = ["rules/overrides.yaml"]\n'
+                'select = ["TEAM"]\n'
+                'output = "json"\n'
+                '[tool.style-audit.llm]\n'
+                'model = "openai/test-model"\n',
+                encoding="utf-8",
+            )
+            document = root / "draft.md"
+            document.write_text(
+                "The service is FAST and rapid; the launch was a complete success.\n",
+                encoding="utf-8",
+            )
+
+            config = load_config(root)
+            overridden = {rule.code: rule for rule in config.overridden_rules}
+            self.assertEqual(overridden["TEAM001"].name, "Project speed wording")
+            self.assertEqual(overridden["TEAM001"].detector.pattern, r"(?<!\w)fast(?!\w)")
+            self.assertEqual(overridden["TEAM001"].additional_terms, ("rapid",))
+            self.assertEqual(
+                overridden["TEAM002"].description,
+                "Flag unsupported launch claims; preserve observable outcomes.",
+            )
+            self.assertEqual(
+                overridden["TEAM002"].examples[0].after,
+                "The launch shipped on 12 May.",
+            )
+
+            response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content=json.dumps({
+                    "findings": [{
+                        "code": "TEAM002",
+                        "evidence": "the launch was a complete success",
+                        "reason": "The launch claim gives no observable result.",
+                    }],
+                }),
+            ))])
+            with patch("style_audit.llm.litellm.completion", return_value=response) as provider:
+                code, output = run(_parse_options([str(document)]), cwd=root)
+
+        findings = json.loads(output)["findings"]
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            [(item["code"], item["evidence"]) for item in findings],
+            [
+                ("TEAM001", "FAST"),
+                ("TEAM001", "rapid"),
+                ("TEAM002", "the launch was a complete success"),
+            ],
+        )
+        self.assertEqual(findings[0]["fix"], "State the measured performance.")
+        provider.assert_called_once()
+        prompt = "\n".join(message["content"] for message in provider.call_args.kwargs["messages"])
+        self.assertIn("Evidence-based launch claims", prompt)
+        self.assertIn("Flag unsupported launch claims", prompt)
+        self.assertIn("The launch shipped on 12 May.", prompt)
+
+    def test_invalid_project_rule_overrides_fail_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            overrides = root / "overrides.yaml"
+            config_path = root / "pyproject.toml"
+            config_path.write_text(
+                '[tool.style-audit]\nrule-overrides = ["overrides.yaml"]\n',
+                encoding="utf-8",
+            )
+            invalid_catalogs = (
+                ("schema_version: 1\noverrides: [{code: UNKNOWN001, name: Unknown}]\n", "unknown rule"),
+                ("schema_version: 1\noverrides: [{code: NAS001, unsupported: true}]\n", "invalid rule overrides"),
+                (
+                    "schema_version: 1\noverrides: [{code: NAS001, detector: {pattern: '['}}]\n",
+                    "invalid detector override",
+                ),
+                ("schema_version: 1\noverrides: [{code: NAS001, prompt: Not deterministic}]\n", "prompt can only"),
+                (
+                    "schema_version: 1\noverrides: [{code: NAS101, additional-terms: [word]}]\n",
+                    "additional-terms can only",
+                ),
+                (
+                    "schema_version: 1\noverrides: [{code: NAS001, name: Duplicate}, {code: NAS001, source: https://example.invalid}]\n",
+                    "only once per file",
+                ),
+            )
+            for content, expected_error in invalid_catalogs:
+                with self.subTest(expected_error=expected_error):
+                    overrides.write_text(content, encoding="utf-8")
+                    with self.assertRaisesRegex(AuditError, expected_error):
+                        load_config(root)
+
+            overrides.write_text(
+                "schema_version: 1\noverrides: [{code: NAS001, name: First}]\n",
+                encoding="utf-8",
+            )
+            (root / "second.yaml").write_text(
+                "schema_version: 1\noverrides: [{code: NAS001, name: Second}]\n",
+                encoding="utf-8",
+            )
+            config_path.write_text(
+                '[tool.style-audit]\nrule-overrides = ["overrides.yaml", "second.yaml"]\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(AuditError, "more than one project file"):
+                load_config(root)
+
+
     def test_default_markdown_selects_nas_and_readability_with_explicit_model(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -177,112 +451,86 @@ class CliTests(unittest.TestCase):
                 (directory / "AGENTS.md").write_text("AGENTS_PRIVATE_481.", encoding="utf-8")
                 (directory / "SKILL.md").write_text("SKILL_PRIVATE_592.", encoding="utf-8")
 
-            requested_rules: set[str] = set()
             requested_text: list[str] = []
+            requested_prompts: list[str] = []
             requested_models: set[str] = set()
 
-            def judge(**kwargs):
-                questions = kwargs["questions"]
-                requested_rules.update(questions)
-                requested_text.append(kwargs["state"]["text"])
-                requested_models.add(kwargs["model"])
-                return SimpleNamespace(answers={
-                    code: SimpleNamespace(type="noul", noul=0.0)
-                    for code in questions
-                })
-            with patch.dict("os.environ", {"OPENROUTER_API_KEY": "controlled-test-key"}):
-                with patch("style_audit.llm.load_decision_api", wraps=load_decision_api):
-                    with patch("style_audit.llm.litellm.systemone", side_effect=judge) as provider:
-                        code, output = run(_parse_options([
-                            str(root), "--format", "json", "--model", "openrouter/microsoft/microsoft-decision-1",
-                        ]), cwd=root)
+            def judge(*, messages, model, **kwargs):
+                user_message = next(message for message in messages if message["role"] == "user")
+                requested_text.append(json.loads(user_message["content"])["text"])
+                requested_prompts.extend(
+                    message["content"] for message in messages if message["role"] == "system"
+                )
+                requested_models.add(model)
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                    content='{"findings":[]}'
+                ))])
 
-            findings = json.loads(output)["findings"]
-            self.assertEqual(code, 1)
-            self.assertEqual(
-                [(item["path"], item["code"]) for item in findings],
-                [("README.md", "NAS001")],
-            )
-            self.assertTrue(any(rule.startswith("NAS") for rule in requested_rules))
-            self.assertTrue(any(rule.startswith("RDL") for rule in requested_rules))
-            self.assertFalse(any(rule.startswith("STE") for rule in requested_rules))
-            self.assertEqual(requested_models, {"openrouter/microsoft/microsoft-decision-1"})
-            self.assertTrue(any("A robust parser works." in text for text in requested_text))
-            self.assertTrue(any("A resilient parser works." in text for text in requested_text))
-            self.assertFalse(any(
-                "PRIVATE_481" in text or "PRIVATE_592" in text
-                for text in requested_text
-            ))
-            self.assertTrue(all(
-                request.kwargs["custom_llm_provider"] == "openrouter"
-                for request in provider.call_args_list
-            ))
-            self.assertTrue(all(
-                request.kwargs["api_base"] == "https://openrouter.ai/api"
-                for request in provider.call_args_list
-            ))
+            with patch("style_audit.llm.litellm.completion", side_effect=judge) as provider:
+                code, output = run(_parse_options([
+                    str(root), "--format", "json", "--model", "openai/test-model",
+                ]), cwd=root)
+
+        findings = json.loads(output)["findings"]
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            [(item["path"], item["code"]) for item in findings],
+            [("README.md", "NAS001")],
+        )
+        self.assertEqual(requested_models, {"openai/test-model"})
+        self.assertTrue(any("A robust parser works." in text for text in requested_text))
+        self.assertTrue(any("A resilient parser works." in text for text in requested_text))
+        self.assertFalse(any(
+            "PRIVATE_481" in text or "PRIVATE_592" in text
+            for text in requested_text + requested_prompts
+        ))
+        self.assertTrue(any("NAS" in text for text in requested_prompts))
+        self.assertTrue(any("RDL" in text for text in requested_prompts))
+        self.assertFalse(any("STE" in text for text in requested_prompts))
 
     def test_default_markdown_is_local_without_llm_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text("[tool.style-audit]\n", encoding="utf-8")
             (root / "README.md").write_text("A robust parser works.", encoding="utf-8")
-            with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                with patch("style_audit.llm.litellm.completion") as chat_provider:
-                    code, output = run(_parse_options([str(root), "--format", "json"]), cwd=root)
+            with patch("style_audit.llm.litellm.completion") as chat_provider:
+                code, output = run(_parse_options([str(root), "--format", "json"]), cwd=root)
 
             self.assertEqual(code, 1)
             self.assertEqual(
                 [(item["path"], item["code"]) for item in json.loads(output)["findings"]],
                 [("README.md", "NAS001")],
             )
-            decision_provider.assert_not_called()
             chat_provider.assert_not_called()
 
-    def test_unsupported_decisions_endpoint_falls_back_through_cli(self) -> None:
-        class EndpointNotFoundError(RuntimeError):
-            status_code = 404
-
+    def test_chat_model_runs_through_cli(self) -> None:
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=json.dumps({
+                "findings": [{
+                    "code": "NAS106",
+                    "evidence": "marks a pivotal moment",
+                    "reason": "This announces importance without a concrete fact.",
+                }],
+            }),
+        ))])
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            settings = DecisionAPISettings(
-                api_base="https://provider.example/openai/v1",
-                model="standard-chat-model",
-                custom_llm_provider="openai",
-                api_key="test-api-key",
-                timeout=12.0,
-            )
-            response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
-                content=json.dumps({
-                    "findings": [{
-                        "code": "NAS106",
-                        "evidence": "marks a pivotal moment",
-                        "reason": "This announces importance without a concrete fact.",
-                    }],
-                }),
-            ))])
             args = _parse_options([
                 "-", "--stdin-filename", "draft.md", "--select", "NAS106",
-                "--model", "azure-maas-judge/standard-chat-model", "--format", "json",
+                "--model", "openai/test-model", "--format", "json",
             ])
-            with patch("style_audit.llm.load_decision_api", return_value=settings):
-                with patch("style_audit.llm.litellm.systemone", side_effect=EndpointNotFoundError("endpoint not found")) as decisions:
-                    with patch("style_audit.llm.litellm.completion", return_value=response) as chat:
-                        code, output = run(
-                            args,
-                            "The launch marks a pivotal moment for the team.",
-                            root,
-                        )
+            with patch("style_audit.llm.litellm.completion", return_value=response) as chat:
+                code, output = run(
+                    args, "The launch marks a pivotal moment for the team.", root,
+                )
 
         self.assertEqual(code, 1)
         findings = json.loads(output)["findings"]
         self.assertEqual([(item["code"], item["evidence"]) for item in findings], [
             ("NAS106", "marks a pivotal moment"),
         ])
-        decisions.assert_called_once()
         chat.assert_called_once()
-        self.assertEqual(chat.call_args.kwargs["model"], settings.model)
-        self.assertEqual(chat.call_args.kwargs["api_key"], settings.api_key)
+        self.assertEqual(chat.call_args.kwargs["model"], "openai/test-model")
 
     def test_clean_stdin_and_explicit_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -323,24 +571,28 @@ class CliTests(unittest.TestCase):
             "A robust parser shipped.\n"
         )
 
-        def provider(*, state, questions, **kwargs):
-            probabilities = {
-                "RDL104": 0.95 if "Memory freshness allocation envelope" in state["text"] else 0.05,
-                "RDL106": 0.95 if "proposal expects" in state["text"] else 0.05,
-            }
-            return SimpleNamespace(answers={
-                code: SimpleNamespace(type="noul", noul=probabilities.get(code, 0.05))
-                for code in questions
-            })
+        def provider(*, messages, **kwargs):
+            user_message = next(message for message in messages if message["role"] == "user")
+            text = json.loads(user_message["content"])["text"]
+            findings = []
+            if "proposal expects" in text:
+                findings.append({
+                    "code": "RDL106",
+                    "evidence": "The proposal expects the reader to calendar the premise.",
+                    "reason": "The premise is difficult to follow.",
+                })
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content=json.dumps({"findings": findings})
+            ))])
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text(
                 '[tool.style-audit]\nselect = ["RDL"]\nignore = ["RDL104"]\noutput = "json"\n'
-                '[tool.style-audit.llm]\nmodel = "azure-maas-judge/Decision-1"\n',
+                '[tool.style-audit.llm]\nmodel = "openai/test-model"\n',
                 encoding="utf-8",
             )
-            with patch("style_audit.llm.litellm.systemone", side_effect=provider):
+            with patch("style_audit.llm.litellm.completion", side_effect=provider):
                 code, output = run(_parse_options(["-"]), source, root)
             self.assertEqual(code, 1)
             self.assertEqual(
@@ -349,7 +601,7 @@ class CliTests(unittest.TestCase):
                 [("RDL106", 2, 1, "The proposal expects the reader to calendar the premise.")],
             )
 
-            with patch("style_audit.llm.litellm.systemone") as provider_call:
+            with patch("style_audit.llm.litellm.completion") as provider_call:
                 code, output = run(_parse_options(["-", "--select", "NAS001"]), source, root)
             self.assertEqual(code, 1)
             self.assertEqual(
@@ -358,95 +610,11 @@ class CliTests(unittest.TestCase):
             )
             provider_call.assert_not_called()
 
-            with patch("style_audit.llm.litellm.systemone") as provider_call:
+            with patch("style_audit.llm.litellm.completion") as provider_call:
                 code, output = run(_parse_options(["-", "--ignore", "RDL"]), source, root)
             self.assertEqual((code, json.loads(output)["findings"]), (0, []))
             provider_call.assert_not_called()
 
-
-    @staticmethod
-    def _decision_response(probability):
-        return SimpleNamespace(answers={
-            "NAS106": SimpleNamespace(type="noul", noul=probability),
-        })
-
-    def test_cli_threshold_overrides_config_in_observable_findings(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            for configured, override, expected_code in (
-                (0.7, None, 0),
-                (0.7, 0.6, 1),
-                (0.6, 0.9, 0),
-            ):
-                with self.subTest(configured=configured, override=override):
-                    (root / "pyproject.toml").write_text(
-                        '[tool.style-audit]\nselect = ["NAS106"]\n'
-                        '[tool.style-audit.llm]\nenabled = true\n'
-                        'model = "azure-maas-judge/Decision-1"\n'
-                        f'threshold = {configured}\n',
-                        encoding="utf-8",
-                    )
-                    options = ["-", "--format", "json"]
-                    if override is not None:
-                        options.extend(["--threshold", str(override)])
-                    args = _parse_options(options)
-                    with patch("style_audit.llm.litellm.systemone", return_value=self._decision_response(0.65)):
-                        code, stdout = run(args, "Visible paragraph.", root)
-                    self.assertEqual(code, expected_code)
-                    report = json.loads(stdout)
-                    self.assertEqual(len(report["findings"]), expected_code)
-                    if expected_code:
-                        self.assertEqual(report["findings"][0]["code"], "NAS106")
-                        self.assertEqual(report["findings"][0]["evidence"], "Visible paragraph.")
-
-    def test_cli_threshold_endpoints_are_valid(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            for threshold, probability, expected_code in ((0, 0, 1), (1, 0, 0), (1, 1, 1)):
-                with self.subTest(threshold=threshold, probability=probability):
-                    args = _parse_options([
-                        "-", "--select", "NAS106", "--model", "azure-maas-judge/Decision-1",
-                        "--threshold", str(threshold), "--format", "json",
-                    ])
-                    with patch("style_audit.llm.litellm.systemone", return_value=self._decision_response(probability)):
-                        code, stdout = run(args, "Visible paragraph.", root)
-                    self.assertEqual(code, expected_code)
-                    self.assertEqual(len(json.loads(stdout)["findings"]), expected_code)
-
-    def test_cli_threshold_rejects_non_numeric_input(self) -> None:
-        runner = CliRunner()
-        for value in ("true", "false", "not-a-number"):
-            with self.subTest(value=value):
-                result = runner.invoke(build_cli(), ["-", f"--threshold={value}"])
-                self.assertEqual(result.exit_code, 2)
-                self.assertIn("--threshold", result.output)
-
-    def test_invalid_cli_thresholds_fail_before_any_provider_call(self) -> None:
-        for value in ("nan", "inf", "-inf", "-0.01", "1.01"):
-            with self.subTest(value=value):
-                with patch("sys.stdin", StringIO("Visible paragraph.\n")):
-                    with patch("sys.stdout", new_callable=StringIO):
-                        with patch("sys.stderr", new_callable=StringIO) as stderr:
-                            with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                                with patch("style_audit.llm.litellm.completion") as chat_provider:
-                                    code = main([
-                                        "-", "--select", "NAS106", "--model", "azure-maas-judge/Decision-1",
-                                        f"--threshold={value}",
-                                    ])
-                self.assertEqual(code, 2)
-                self.assertIn("--threshold", stderr.getvalue())
-                decision_provider.assert_not_called()
-                chat_provider.assert_not_called()
-
-    def test_invalid_threshold_configuration_is_not_hidden_by_cli_override(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "pyproject.toml").write_text(
-                "[tool.style-audit.llm]\nthreshold = true\n", encoding="utf-8"
-            )
-            args = _parse_options(["-", "--select", "NAS001", "--threshold", "0.5"])
-            with self.assertRaisesRegex(AuditError, "threshold"):
-                run(args, "Ordinary prose.", root)
 
     def test_deterministic_only_selection_never_calls_a_provider_even_with_llm_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -456,30 +624,28 @@ class CliTests(unittest.TestCase):
                 config_path.write_text(
                     '[tool.style-audit]\nselect = ["NAS106"]\n'
                     '[tool.style-audit.llm]\nenabled = true\n'
-                    'model = "azure-maas-judge/Decision-1"\n'
+                    'model = "openai/test-model"\n'
                     if configured else "[tool.style-audit]\n",
                     encoding="utf-8",
                 )
                 for flags in (
                     ["--llm"],
-                    ["--model", "azure-maas-judge/Decision-1"],
-                    ["--llm", "--model", "azure-maas-judge/Decision-1", "--threshold", "0"],
+                    ["--model", "openai/test-model"],
+                    ["--llm", "--model", "openai/test-model"],
                 ):
                     with self.subTest(configured=configured, flags=flags):
                         args = _parse_options([
                             "-", "--select", "NAS001", "--format", "json", *flags,
                         ])
-                        with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                            with patch("style_audit.llm.litellm.completion") as chat_provider:
-                                code, stdout = run(args, "The robust parser.", root)
+                        with patch("style_audit.llm.litellm.completion") as chat_provider:
+                            code, stdout = run(args, "The robust parser.", root)
                         self.assertEqual(code, 1)
                         self.assertEqual(
                             {finding["code"] for finding in json.loads(stdout)["findings"]}, {"NAS001"}
                         )
-                        decision_provider.assert_not_called()
                         chat_provider.assert_not_called()
 
-    def test_provider_or_answer_failure_emits_error_without_a_partial_json_report(self) -> None:
+    def test_provider_or_response_failure_emits_error_without_partial_json(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             config_path = root / "pyproject.toml"
@@ -488,26 +654,29 @@ class CliTests(unittest.TestCase):
             second = root / "second.md"
             first.write_text("A robust first paragraph.", encoding="utf-8")
             second.write_text("Second visible paragraph.", encoding="utf-8")
-            for failure in (
-                RuntimeError("decision provider offline"),
-                SimpleNamespace(answers={}),
-            ):
+            empty_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content='{"findings":[]}'
+            ))])
+            malformed_response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content="not json"
+            ))])
+            for failure in (RuntimeError("chat provider offline"), malformed_response):
                 with self.subTest(failure=failure):
-                    with patch("style_audit.llm.litellm.systemone", side_effect=[
-                        self._decision_response(0.9), failure,
+                    with patch("style_audit.llm.litellm.completion", side_effect=[
+                        empty_response, failure,
                     ]):
                         with patch("sys.stdout", new_callable=StringIO) as stdout:
                             with patch("sys.stderr", new_callable=StringIO) as stderr:
                                 code = main([
                                     str(first), str(second), "--config", str(config_path),
-                                    "--select", "NAS001,NAS106", "--model", "azure-maas-judge/Decision-1",
+                                    "--select", "NAS001,NAS106", "--model", "openai/test-model",
                                     "--format", "json",
                                 ])
                     self.assertEqual(code, 2)
                     self.assertEqual(stdout.getvalue(), "")
                     self.assertIn("style-audit: error:", stderr.getvalue())
                     if isinstance(failure, RuntimeError):
-                        self.assertIn("LiteLLM Decisions call failed (RuntimeError)", stderr.getvalue())
+                        self.assertIn("LiteLLM provider call failed", stderr.getvalue())
 
     def test_directory_defaults_audit_python_docstrings_not_comments_or_code(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -530,9 +699,8 @@ class CliTests(unittest.TestCase):
             excluded = root / ".venv"
             excluded.mkdir()
             (excluded / "invalid.py").write_text("def broken(:\n", encoding="utf-8")
-            with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                with patch("style_audit.llm.litellm.completion") as chat_provider:
-                    code, output = run(_parse_options([str(root)]), cwd=root)
+            with patch("style_audit.llm.litellm.completion") as chat_provider:
+                code, output = run(_parse_options([str(root)]), cwd=root)
             self.assertEqual(code, 1)
             self.assertEqual(
                 [(finding["path"], finding["code"], finding["evidence"], finding["line"], finding["column"])
@@ -541,7 +709,6 @@ class CliTests(unittest.TestCase):
                  ("package.py", "NAS001", "robust", 4, 10),
                  ("types.pyi", "NAS001", "robust", 1, 6)],
             )
-            decision_provider.assert_not_called()
             chat_provider.assert_not_called()
 
     def test_gherkin_double_quote_docstrings_hide_fixture_values(self) -> None:
@@ -558,11 +725,9 @@ class CliTests(unittest.TestCase):
             root = Path(temporary)
             feature = root / "draft.feature"
             feature.write_text(source, encoding="utf-8")
-            with patch("style_audit.llm.litellm.systemone") as decision_provider:
+            with patch("style_audit.llm.litellm.completion") as provider:
                 code, output = run(
-                    _parse_options([
-                        str(feature), "--select", "NAS001", "--format", "json",
-                    ]),
+                    _parse_options([str(feature), "--select", "NAS001", "--format", "json"]),
                     cwd=root,
                 )
             self.assertEqual(code, 1)
@@ -572,7 +737,7 @@ class CliTests(unittest.TestCase):
                 [("draft.feature", "NAS001", "robust", 1, 10),
                  ("draft.feature", "NAS001", "robust", 7, 14)],
             )
-            decision_provider.assert_not_called()
+            provider.assert_not_called()
 
     def test_python_include_exclude_and_rule_selection_keep_existing_semantics(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -637,23 +802,20 @@ class CliTests(unittest.TestCase):
             for filename, expected_code in (("input.py", 0), ("input.pyi", 0),
                                              ("input.txt", 1), ("<stdin>", 1)):
                 with self.subTest(filename=filename):
-                    with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                        with patch("style_audit.llm.litellm.completion") as chat_provider:
-                            code, output = run(_parse_options([
-                                "-", "--stdin-filename", filename, "--select", "NAS001,NAS106",
-                                "--model", "azure-maas-judge/Decision-1", "--format", "json",
-                            ] if expected_code == 0 else [
-                                "-", "--stdin-filename", filename, "--select", "NAS001", "--format", "json",
-                            ]), source, root)
+                    with patch("style_audit.llm.litellm.completion") as chat_provider:
+                        code, output = run(_parse_options([
+                            "-", "--stdin-filename", filename, "--select", "NAS001,NAS106",
+                            "--model", "openai/test-model", "--format", "json",
+                        ] if expected_code == 0 else [
+                            "-", "--stdin-filename", filename, "--select", "NAS001", "--format", "json",
+                        ]), source, root)
                     self.assertEqual(code, expected_code)
                     findings = json.loads(output)["findings"]
                     self.assertEqual(
                         [(finding["evidence"], finding["line"], finding["column"]) for finding in findings],
                         [] if expected_code == 0 else [("robust", 1, 5)],
                     )
-                    decision_provider.assert_not_called()
                     chat_provider.assert_not_called()
-
     def test_invalid_python_is_an_operational_error_before_any_provider_or_json(self) -> None:
         invalid = '"""A robust preamble."""\ndef broken(:\n    pass\n'
         with tempfile.TemporaryDirectory() as temporary:
@@ -666,27 +828,24 @@ class CliTests(unittest.TestCase):
                 invalid_path = root / f"z_invalid{suffix}"
                 invalid_path.write_text(invalid, encoding="utf-8")
                 for mode in ("file", "stdin"):
-                    for model in ("openai/test-model", "azure-maas-judge/Decision-1"):
-                        with self.subTest(suffix=suffix, mode=mode, model=model):
-                            inputs = ([str(first), str(invalid_path)] if mode == "file" else
-                                      ["-", "--stdin-filename", invalid_path.name, str(first)])
-                            with patch("style_audit.llm.litellm.completion") as chat_provider:
-                                with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                                    with patch("sys.stdin", StringIO(invalid)):
-                                        with patch("sys.stdout", new_callable=StringIO) as stdout:
-                                            with patch("sys.stderr", new_callable=StringIO) as stderr:
-                                                code = main([
-                                                    *inputs, "--config", str(config_path),
-                                                    "--select", "NAS001,NAS106", "--model", model,
-                                                    "--format", "json",
-                                                ])
-                            self.assertEqual(code, 2)
-                            self.assertEqual(stdout.getvalue(), "")
-                            self.assertIn("style-audit: error:", stderr.getvalue())
-                            self.assertIn(invalid_path.name, stderr.getvalue())
-                            self.assertRegex(stderr.getvalue(), r"(?:line |:)2(?:[:, ]|$)")
-                            chat_provider.assert_not_called()
-                            decision_provider.assert_not_called()
+                    inputs = ([str(first), str(invalid_path)] if mode == "file" else
+                              ["-", "--stdin-filename", invalid_path.name, str(first)])
+                    with self.subTest(suffix=suffix, mode=mode):
+                        with patch("style_audit.llm.litellm.completion") as chat_provider:
+                            with patch("sys.stdin", StringIO(invalid)):
+                                with patch("sys.stdout", new_callable=StringIO) as stdout:
+                                    with patch("sys.stderr", new_callable=StringIO) as stderr:
+                                        code = main([
+                                            *inputs, "--config", str(config_path),
+                                            "--select", "NAS001,NAS106", "--model", "openai/test-model",
+                                            "--format", "json",
+                                        ])
+                        self.assertEqual(code, 2)
+                        self.assertEqual(stdout.getvalue(), "")
+                        self.assertIn("style-audit: error:", stderr.getvalue())
+                        self.assertIn(invalid_path.name, stderr.getvalue())
+                        self.assertRegex(stderr.getvalue(), r"(?:line |:)2(?:[:, ]|$)")
+                        chat_provider.assert_not_called()
 
     def test_python_file_accepts_utf8_bom_and_reports_original_unicode_columns(self) -> None:
         source = (
@@ -698,11 +857,10 @@ class CliTests(unittest.TestCase):
             root = Path(temporary)
             path = root / "bom.py"
             path.write_bytes(source.encode("utf-8"))
-            with patch("style_audit.llm.litellm.systemone") as decision_provider:
-                with patch("style_audit.llm.litellm.completion") as chat_provider:
-                    code, output = run(_parse_options([
-                        str(path), "--select", "NAS001", "--format", "json",
-                    ]), cwd=root)
+            with patch("style_audit.llm.litellm.completion") as chat_provider:
+                code, output = run(_parse_options([
+                    str(path), "--select", "NAS001", "--format", "json",
+                ]), cwd=root)
             self.assertEqual(code, 1)
             self.assertEqual(
                 [(finding["path"], finding["code"], finding["evidence"], finding["line"],
@@ -710,10 +868,9 @@ class CliTests(unittest.TestCase):
                  for finding in json.loads(output)["findings"]],
                 [("bom.py", "NAS001", "robust", 1, source.index("robust") + 1, 1, 28)],
             )
-            decision_provider.assert_not_called()
             chat_provider.assert_not_called()
 
-    def test_python_file_and_stdin_preserve_unicode_crlf_and_decision_evidence(self) -> None:
+    def test_python_file_and_stdin_preserve_unicode_crlf_and_chat_evidence(self) -> None:
         source = (
             '# Café 🌿\r\n'
             'def café():\r\n'
@@ -730,16 +887,21 @@ class CliTests(unittest.TestCase):
                 with self.subTest(mode=mode):
                     contexts = []
 
-                    def provider(*, state, questions, **kwargs):
-                        contexts.append(state)
-                        return SimpleNamespace(answers={
-                            "NAS101": SimpleNamespace(type="noul", noul=0.9),
-                        })
+                    def provider(*, messages, **kwargs):
+                        user_message = next(message for message in messages if message["role"] == "user")
+                        context = json.loads(user_message["content"])
+                        contexts.append(context)
+                        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                            content=json.dumps({"findings": [{
+                                "code": "NAS101", "evidence": expected_text,
+                                "reason": "The statement needs support.",
+                            }]})
+                        ))])
 
                     inputs = [str(path)] if mode == "file" else ["-", "--stdin-filename", path.name]
-                    with patch("style_audit.llm.litellm.systemone", side_effect=provider):
+                    with patch("style_audit.llm.litellm.completion", side_effect=provider):
                         code, output = run(_parse_options([
-                            *inputs, "--select", "NAS101", "--model", "azure-maas-judge/Decision-1",
+                            *inputs, "--select", "NAS101", "--model", "openai/test-model",
                             "--format", "json",
                         ]), source if mode == "stdin" else None, root)
                     self.assertEqual(code, 1)
@@ -885,12 +1047,20 @@ class CliTests(unittest.TestCase):
             self.assertEqual([item["code"] for item in json.loads(output)["findings"]], ["NAS002"])
 
     def test_per_file_llm_selection_only_sends_matching_files_and_needs_no_unused_model(self) -> None:
-        def provider(*, state, questions, **kwargs):
-            self.assertNotIn("PRIVATE", state["text"])
-            return SimpleNamespace(answers={
-                code: SimpleNamespace(type="noul", noul=0.95 if code == "RDL104" and "Memory freshness" in state["text"] else 0.05)
-                for code in questions
-            })
+        def provider(*, messages, **kwargs):
+            self.assertNotIn("PRIVATE", json.dumps(messages))
+            user_message = next(message for message in messages if message["role"] == "user")
+            text = json.loads(user_message["content"])["text"]
+            findings = []
+            if "Memory freshness" in text:
+                findings.append({
+                    "code": "RDL104",
+                    "evidence": "Memory freshness allocation envelope changed.",
+                    "reason": "The phrase is difficult to interpret.",
+                })
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content=json.dumps({"findings": findings})
+            ))])
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -901,20 +1071,20 @@ class CliTests(unittest.TestCase):
                 '[tool.style-audit]\noutput = "json"\n'
                 '[tool.style-audit.per-file-select]\n"review/*.md" = ["RDL10[46]"]\n'
             )
-            config.write_text(settings + '[tool.style-audit.llm]\nmodel = "azure-maas-judge/Decision-1"\n', encoding="utf-8")
+            config.write_text(settings + '[tool.style-audit.llm]\nmodel = "openai/test-model"\n', encoding="utf-8")
             (root / "review" / "draft.md").write_text("Memory freshness allocation envelope changed.\n", encoding="utf-8")
             local = root / "local.md"
             local.write_text("A robust PRIVATE local report.\n", encoding="utf-8")
             python = root / "src" / "api.py"
             python.write_text('"""A robust PRIVATE parser."""\n', encoding="utf-8")
-            with patch("style_audit.llm.litellm.systemone", side_effect=provider):
+            with patch("style_audit.llm.litellm.completion", side_effect=provider):
                 code, output = run(_parse_options([str(root)]), cwd=root)
             self.assertEqual(code, 1)
             self.assertEqual(sorted((item["path"], item["code"]) for item in json.loads(output)["findings"]), [
                 ("local.md", "NAS001"), ("review/draft.md", "RDL104"), ("src/api.py", "NAS001"),
             ])
             config.write_text(settings, encoding="utf-8")
-            with patch("style_audit.llm.litellm.systemone", side_effect=AssertionError("Private files reached a provider")):
+            with patch("style_audit.llm.litellm.completion", side_effect=AssertionError("Private files reached a provider")) as chat:
                 code, output = run(_parse_options([str(local), str(python)]), cwd=root)
                 self.assertEqual(code, 1)
                 self.assertEqual([(item["path"], item["code"]) for item in json.loads(output)["findings"]], [
@@ -925,6 +1095,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual([(item["path"], item["code"]) for item in json.loads(output)["findings"]], [
                     ("local.md", "NAS001"), ("src/api.py", "NAS001"),
                 ])
+            chat.assert_not_called()
 
     def test_invalid_per_file_settings_and_unmatched_rule_patterns_are_errors_even_with_cli_override(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -956,12 +1127,13 @@ class CliTests(unittest.TestCase):
             )
             (root / "a-local.md").write_text("A robust local report.\n", encoding="utf-8")
             (root / "z-review.md").write_text("The release marks a pivotal moment.\n", encoding="utf-8")
-            with patch("style_audit.llm.litellm.systemone", side_effect=AssertionError("Missing model started a provider")):
+            with patch("style_audit.llm.litellm.completion", side_effect=AssertionError("Missing model started a provider")) as chat:
                 with patch("sys.stdout", new_callable=StringIO) as stdout, patch("sys.stderr", new_callable=StringIO) as stderr:
                     code = main([str(root), "--config", str(root / "pyproject.toml")])
             self.assertEqual(code, 2)
             self.assertEqual(stdout.getvalue(), "")
             self.assertIn("requires an explicit model", stderr.getvalue())
+            chat.assert_not_called()
 
 
 if __name__ == "__main__":

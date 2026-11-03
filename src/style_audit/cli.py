@@ -2,7 +2,6 @@
 
 from collections.abc import Sequence
 import fnmatch
-import math
 import os
 from pathlib import Path
 import sys
@@ -21,7 +20,7 @@ from .marimo_docs import extract_markdown_cells
 from .llm import judge_document
 from .models import AuditError, Diagnostic, Rule
 from .reporting import render_json, render_text, sort_diagnostics
-from .rules import RULES, RULES_BY_CODE
+from .rules import RULES
 from .gherkin import document_from_feature
 from .text import TextDocument
 
@@ -33,13 +32,13 @@ def _csv(values: Sequence[str], option: str) -> tuple[str, ...]:
     return parts
 
 
-def _expand(values: Sequence[str]) -> set[str]:
+def _expand(values: Sequence[str], rule_codes: Sequence[str]) -> set[str]:
     selected: set[str] = set()
     for value in values:
         if any(char in value for char in "*?["):
-            matches = {code for code in RULES_BY_CODE if fnmatch.fnmatchcase(code, value)}
+            matches = {code for code in rule_codes if fnmatch.fnmatchcase(code, value)}
         else:
-            matches = {code for code in RULES_BY_CODE if code.startswith(value)}
+            matches = {code for code in rule_codes if code.startswith(value)}
         if not matches:
             raise AuditError(f"unknown rule selector {value!r}")
         selected.update(matches)
@@ -142,7 +141,6 @@ class CLIOptions(BaseModel):
     format: str | None
     llm: bool
     model: str | None
-    threshold: float | None
     stdin_filename: str
 
 
@@ -178,11 +176,6 @@ def build_cli() -> click.Command:
     @click.option("--llm", is_flag=True, help="explicitly enable LLM judgments")
     @click.option("--model", help="LiteLLM model for enabled editorial judgments")
     @click.option(
-        "--threshold",
-        type=click.FloatRange(min=0, max=1),
-        help="decision probability threshold from 0 to 1 (default: project setting or 0.8)",
-    )
-    @click.option(
         "--stdin-filename",
         default="<stdin>",
         show_default=True,
@@ -202,7 +195,6 @@ def build_cli() -> click.Command:
         format: str | None,
         llm: bool,
         model: str | None,
-        threshold: float | None,
         stdin_filename: str,
     ) -> int:
         options = CLIOptions(
@@ -213,7 +205,6 @@ def build_cli() -> click.Command:
             format=format,
             llm=llm,
             model=model,
-            threshold=threshold,
             stdin_filename=stdin_filename,
         )
         try:
@@ -231,16 +222,20 @@ def build_cli() -> click.Command:
 def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None) -> tuple[int, str]:
     working_directory = (cwd or Path.cwd()).resolve()
     config = load_config(working_directory, args.config)
+    rules_by_code = {rule.code: rule for rule in (*RULES, *config.project_rules)}
+    rules_by_code.update({rule.code: rule for rule in config.overridden_rules})
+    rules = tuple(rules_by_code.values())
+    rule_codes = tuple(rules_by_code)
     selection = _csv(args.select, "--select") if args.select else config.select
-    ignored = _expand((*config.ignore, *_csv(args.ignore, "--ignore")))
-    enabled = (_expand(selection) if selection else set(RULES_BY_CODE)) - ignored
-    per_file = tuple((pattern, _expand(values) - ignored) for pattern, values in config.per_file_select)
+    ignored = _expand((*config.ignore, *_csv(args.ignore, "--ignore")), rule_codes)
+    enabled = (_expand(selection, rule_codes) if selection else set(rule_codes)) - ignored
+    per_file = tuple(
+        (pattern, _expand(values, rule_codes) - ignored)
+        for pattern, values in config.per_file_select
+    )
     if args.select:
         per_file = ()
     model = args.model or config.llm_model
-    threshold = args.threshold if args.threshold is not None else config.llm_threshold
-    if isinstance(threshold, bool) or not math.isfinite(threshold) or not 0 <= threshold <= 1:
-        raise AuditError("--threshold must be a finite number between 0 and 1")
     paths = args.paths or ["."]
     if "-" in paths and stdin_text is None:
         stdin_text = sys.stdin.read()
@@ -260,14 +255,14 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
         if matches:
             codes = set().union(*matches)
         elif is_default_markdown:
-            codes = _expand(DEFAULT_MARKDOWN_SELECT) - ignored
+            codes = _expand(DEFAULT_MARKDOWN_SELECT, rule_codes) - ignored
         else:
             codes = enabled
-        rules = tuple(rule for rule in RULES if rule.code in codes)
-        deterministic_rules = tuple(rule for rule in rules if rule.engine == "deterministic")
-        llm_rules = tuple(rule for rule in rules if rule.engine == "llm")
-        if config.ste_disallowed_words and any(rule.code == "STE101" for rule in rules):
-            deterministic_rules += (RULES_BY_CODE["STE101"],)
+        selected_rules = tuple(rule for rule in rules if rule.code in codes)
+        deterministic_rules = tuple(rule for rule in selected_rules if rule.engine == "deterministic")
+        llm_rules = tuple(rule for rule in selected_rules if rule.engine == "llm")
+        if config.ste_disallowed_words and any(rule.code == "STE101" for rule in selected_rules):
+            deterministic_rules += (rules_by_code["STE101"],)
         llm_selected = bool(args.select or config.select or matches)
         use_llm = bool(llm_rules) and (
             config.llm_enabled is True or args.llm or args.model is not None or llm_selected
@@ -293,7 +288,8 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
                 document,
                 llm_rules,
                 document_model or "",
-                threshold=threshold,
+                api=config.llm_api,
+                threshold=config.llm_threshold,
                 litellm_config=config.llm_litellm,
                 ste_allowed_words=config.ste_allowed_words,
                 ste_disallowed_words=config.ste_disallowed_words,

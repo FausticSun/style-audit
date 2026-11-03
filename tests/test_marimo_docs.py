@@ -24,7 +24,6 @@ class MarimoMarkdownTests(unittest.TestCase):
     def setUp(self) -> None:
         for provider in (
             "style_audit.llm.litellm.completion",
-            "style_audit.llm.litellm.systemone",
         ):
             guard = patch(
                 provider,

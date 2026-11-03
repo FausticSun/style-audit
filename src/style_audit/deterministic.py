@@ -50,7 +50,7 @@ def _diagnostic(
 
 
 def _merge_matches(primary, additional):
-    """Keep regex-union ordering while merging configurable NAS terms."""
+    """Merge detector matches with user-supplied terms in source order."""
     ordered = [(match, 0) for match in primary] + [(match, 1) for match in additional]
     ordered.sort(key=lambda item: (item[0].start(), item[1]))
     selected = []
@@ -152,15 +152,22 @@ def analyze_deterministic(
         if not isinstance(detector, RegexDetector):
             continue
         pattern = _compile_pattern(detector.pattern, _regex_flags(detector))
+        additional_pattern = _term_pattern(rule.additional_terms) if rule.additional_terms else None
         if detector.target == "heading":
             scope_units = document.units(rule.scope)
             for heading_start, heading_end in document.heading_spans:
                 match = pattern.search(document.visible_text, heading_start, heading_end)
-                if match is None or not any(
-                    unit.start <= match.start() < unit.end for unit in scope_units
-                ):
-                    continue
-                _append_regex_finding(findings, document, rule, detector, match)
+                primary = [match] if match is not None else []
+                additional = (
+                    list(additional_pattern.finditer(document.visible_text, heading_start, heading_end))
+                    if additional_pattern is not None
+                    else []
+                )
+                matches = _merge_matches(primary, additional) if additional else primary
+                for match in matches:
+                    if not any(unit.start <= match.start() < unit.end for unit in scope_units):
+                        continue
+                    _append_regex_finding(findings, document, rule, detector, match)
             continue
 
         for unit in document.units(rule.scope):
@@ -170,12 +177,14 @@ def analyze_deterministic(
                 if rule.code != "NAS001" or match.group().casefold() not in allowed
             ]
             additional = (
-                list(nas_disallowed_pattern.finditer(
-                    document.visible_text, unit.start, unit.end
-                ))
-                if rule.code == "NAS001" and nas_disallowed_pattern is not None
+                list(additional_pattern.finditer(document.visible_text, unit.start, unit.end))
+                if additional_pattern is not None
                 else []
             )
+            if rule.code == "NAS001" and nas_disallowed_pattern is not None:
+                additional.extend(nas_disallowed_pattern.finditer(
+                    document.visible_text, unit.start, unit.end
+                ))
             matches = _merge_matches(primary, additional) if additional else primary
             for match in matches:
                 _append_regex_finding(findings, document, rule, detector, match)

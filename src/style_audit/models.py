@@ -4,7 +4,7 @@ import re
 from string import Formatter
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 RuleScope = Literal["sentence", "paragraph", "section", "document"]
 
@@ -68,6 +68,14 @@ class Rule(_FrozenModel):
     examples: tuple[RuleExample, ...]
 
     detector: Detector | None = None
+    additional_terms: tuple[str, ...] = ()
+
+    @field_validator("additional_terms")
+    @classmethod
+    def validate_additional_terms(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not term.strip() for term in value):
+            raise ValueError("additional terms must be non-empty strings")
+        return tuple(term.strip() for term in value)
 
     @model_validator(mode="after")
     def validate_detector(self) -> "Rule":
@@ -79,6 +87,8 @@ class Rule(_FrozenModel):
             raise ValueError("sentence-count detectors require paragraph scope")
         if isinstance(self.detector, RegexDetector) and self.detector.target == "heading" and self.scope != "section":
             raise ValueError("heading regex detectors require section scope")
+        if self.additional_terms and not isinstance(self.detector, RegexDetector):
+            raise ValueError("additional terms require a regex detector")
         return self
 
 

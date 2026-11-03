@@ -27,13 +27,9 @@ def stdin_text():
 
 @pytest.fixture(autouse=True)
 def providers(monkeypatch):
-    calls = {
-        "chat": Mock(side_effect=AssertionError("Unexpected chat provider call")),
-        "decision": Mock(side_effect=AssertionError("Unexpected decision provider call")),
-    }
-    monkeypatch.setattr(llm.litellm, "completion", calls["chat"])
-    monkeypatch.setattr(llm.litellm, "systemone", calls["decision"])
-    return calls
+    chat = Mock(side_effect=AssertionError("Unexpected chat provider call"))
+    monkeypatch.setattr(llm.litellm, "completion", chat)
+    return {"chat": chat}
 
 
 @pytest.fixture
