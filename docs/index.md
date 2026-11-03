@@ -27,7 +27,7 @@ The `STE` [Simplified Technical English ruleset](reference/technical-english.md)
 
 ```sh
 uv sync --group docs
-uv run --group docs mkdocs serve
+uv run --group docs zensical serve
 ```
 
 See [contributing](contributing.md) for the full test and strict-build commands.

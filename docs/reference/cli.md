@@ -29,7 +29,7 @@ Each ordinary Python docstring becomes a separate logical document. Its Python s
 style-audit src/ tests/ --select NAS00
 style-audit module.py --select NAS00 --format json
 cat module.py | style-audit - --stdin-filename module.py --select NAS00
-style-audit module.py --select NAS00,RDL --model azure-maas-judge/Decision-1
+style-audit module.py --select NAS00,RDL --model openai/gpt-4o-mini
 ```
 
 No new rule IDs or configuration toggle are needed. The same selection, ignores, LLM opt-in, and exit codes apply. Files without extracted prose produce no findings or provider requests. Source positions count original Unicode characters, and UTF-8 BOM and physical newlines are retained in the source mapping.
@@ -42,7 +42,7 @@ A `.py` file is treated as a Marimo app when it imports Marimo and constructs `A
 
 ```sh
 style-audit notebooks/system_design.py --select NAS00 --format json
-style-audit notebooks/system_design.py --select NAS,RDL --model azure-maas-judge/Decision-1
+style-audit notebooks/system_design.py --select NAS,RDL --model openai/gpt-4o-mini
 ```
 
 Selecting LLM rules sends only the current extracted Markdown unit after normal code and quotation masking. Visible private prose remains eligible for transmission; extraction is not redaction.
@@ -67,8 +67,7 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 | `--ignore RULE[,RULE]` | Suppress IDs, prefixes, or globs and add them to configured `ignore`. Repeatable. |
 | `--format text\|json` | Override configured report format. |
 | `--llm` | Explicitly enable LLM rules among the currently selected rules. |
-| `--model MODEL` | Select OpenRouter Microsoft Decision-1, an Azure MaaS Decisions model, or a LiteLLM chat model and opt into judging selected LLM rules. |
-| `--threshold FLOAT` | Override the decision-probability threshold (default `0.8`). The value must be finite and in `[0, 1]`. It does not enable judging. |
+| `--model MODEL` | Select a LiteLLM `provider/model` name and opt into judging selected LLM rules using the API configured in `[tool.style-audit.llm].api` (chat completions by default). |
 | `--stdin-filename NAME` | Set the stdin path for per-file selection; `.py` selects Marimo Markdown cells or Python docstrings, `.pyi` selects docstrings, and `.feature` selects Gherkin processing. |
 | `--version` | Print the package version. |
 | `-h`, `--help` | Print help. |
@@ -77,19 +76,17 @@ IDs, prefixes, and filename-style rule globs are matched case-sensitively. `NAS`
 
 CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. Without a global selection or matching per-file entry, `.md` inputs default to `NAS` and `RDL`; other inputs select all catalogs. An empty per-file selection disables rules for matching files. See [per-file rule selection](../configuration.md#per-file-rule-selection).
 
-Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judging. LLM review requires selected LLM rules, a model, and an opt-in through `enabled = true`, explicit LLM selection, `--llm`, or `--model`. Set `OPENROUTER_API_KEY` when using OpenRouter. A deterministic-only effective selection does not start remote calls. See [LLM review and privacy](../llm.md).
+Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judging. LLM review requires selected LLM rules, a model, and an opt-in through `enabled = true`, explicit LLM selection, `--llm`, or `--model`. Supply the standard credentials required by the selected LiteLLM provider; for `openai/gpt-4o-mini`, set `OPENAI_API_KEY`. A deterministic-only effective selection does not start remote calls. See [LLM review and privacy](../llm.md).
 
 `STE` selects all 61 ASD-STE100 entries, including recommendations. `STE606` and `STE801` are the local paragraph-count and semicolon rules. Markdown table blocks are not paragraphs and do not count toward the STE606 six-sentence limit. STE801 still checks semicolons in table cells. Combine selectors with `--select NAS00,RDL,STE606,STE801`, or quote globs such as `--select 'NAS00?'` and `--ignore 'NAS00[23]'`. Every selector must match a registered rule.
 
-To use OpenRouter Microsoft Decision-1, select an LLM rule and opt in with a model such as `openrouter/microsoft/microsoft-decision-1`; set `OPENROUTER_API_KEY`. LiteLLM sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`, not chat completions. No custom endpoint configuration is required. The `azure-maas-judge/<model-id>` selector remains available for Azure MaaS Decisions judging through the OMP registry or `[tool.style-audit.llm.litellm]`. Other model names use LiteLLM chat judging.
 
 Example:
 
 ```sh
-style-audit draft.md --select NAS106 --model openrouter/microsoft/microsoft-decision-1 --threshold 0.9
+style-audit draft.md --select NAS106 --model openai/gpt-4o-mini
 ```
 
-`--threshold` overrides `[tool.style-audit.llm].threshold`. A decision probability equal to the threshold is included, and below-threshold answers are excluded only after validation. Non-numeric, nonfinite, or out-of-range CLI values fail with exit `2`. The setting is validated but does not filter chat findings. See [configuration](../configuration.md) for TOML types.
 
 ## Output and exit status
 
@@ -97,14 +94,13 @@ Text output reports `path:line:column`, rule ID, explanation, exact evidence, an
 
 JSON output is a versioned object with a `findings` array. Each finding contains `path`, `code`, `message`, `line`, `column`, `end_line`, `end_column`, `evidence`, and `fix`. Findings sort deterministically by path, start position, rule ID, and end position. Empty scans produce an empty text stream or a JSON object with an empty array.
 
-Decision findings use the complete original logical unit as `evidence`, locate it by original source offsets, and include the scope, rule name, description, and probability in `message`. The source span may contain masked quotations or code as context, not judged prose. A document-scoped finding spans the trimmed document. Multiple matching-scope rules may produce findings for the same unit, and equal text in different units remains separately located. `fix` is empty because decision responses do not generate suggestions. No probability field or new JSON schema is added.
+Completion findings use exact contiguous visible quotes within the current unit, generated reasons, and optional fixes. Decisions findings use the full visible unit as evidence and include the configured probability threshold; they do not include generated rationales or fixes. Deterministic findings retain exact token or emoji evidence within their rules' units.
 
-Chat findings use validated exact contiguous visible quotes within the current unit, generated reasons, and optional fixes. Quotes elsewhere in the input do not qualify. Deterministic findings retain exact token or emoji evidence within their rules' units.
 
 | Exit status | Meaning |
 | --- | --- |
 | `0` | No findings. |
 | `1` | One or more findings. |
-| `2` | Invalid configuration or threshold, unknown rule, unreadable or missing input, or LLM/provider error (including malformed answers or unavailable credentials). |
+| `2` | Invalid configuration, unknown rule, unreadable or missing input, or LLM/provider error (including malformed answers or unavailable credentials). |
 
 Operational errors go to stderr. JSON mode never turns operational failures into an empty successful report.

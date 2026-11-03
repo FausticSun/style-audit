@@ -20,7 +20,7 @@ dev = [
     "pytest-bdd>=8.1",
 ]
 docs = [
-    "mkdocs>=1.6,<2",
+    "zensical>=0.0.72,<0.1",
     "pymdown-extensions>=10,<13",
 ]
 

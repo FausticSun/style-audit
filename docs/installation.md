@@ -92,33 +92,17 @@ Audit an existing source tree with `uv run style-audit src/`, or pipe Python cod
 
 ### Optional: enable LLM review
 
-Configure the Azure MaaS Decision-1 provider in the OMP model registry. Style-audit looks first at `~/.omp/agent/models.yml`, then falls back to `~/.omp/agents/models.yml` if the first file is absent:
-
-```yaml
-providers:
-  azure-maas-judge:
-    api: openrouter-decisions
-    baseUrl: "https://<your-azure-maas-host>/openai/v1"
-    apiKey: "<your-secret-api-key>"
-    models:
-      - id: Decision-1
-```
-
-The registry's `baseUrl` supplies LiteLLM's `api_base` unless project configuration overrides it. `custom_llm_provider` selects LiteLLM's provider-specific Decisions adapter.
-
-For a Microsoft Foundry project endpoint, set it to `azure_ai`. LiteLLM constructs `/providers/microsoft/v1/systemone`. For an OpenAI-compatible base ending `/openai/v1`, set it to `openai`. LiteLLM constructs `/openai/v1/decisions`. The required OMP value `api: openrouter-decisions` identifies the Decisions interface but does not use the OpenRouter service. Style-audit passes the configured base URL and API key explicitly.
-
-The registry `apiKey` is a secret. Restrict access to this user-level YAML file and do not commit or share it. Unless a different `api_key_env` is configured in TOML, `AZURE_MAAS_JUDGE_API_KEY` overrides the registry key. The `api_key_env` value names an environment variable, not its secret value. The named variable must be set and does not fall back to the registry key. See [LiteLLM transport settings](configuration.md#litellm-transport-settings) for project overrides and validation.
+Set up the credential required by the LiteLLM provider you choose. For example, the model `openai/gpt-4o-mini` uses `OPENAI_API_KEY` by default. Never put raw credentials in project TOML.
 
 This invocation opts into readability review:
 
 ```sh
-uv run style-audit draft.md --select NAS00,RDL --model azure-maas-judge/Decision-1 --threshold 0.8
+uv run style-audit draft.md --select NAS00,RDL --model openai/gpt-4o-mini
 ```
 
 `--select` replaces the local-only configured selection. The command runs the local checks plus the LLM-based [readability rules](reference/readability.md). Use `--select NAS,RDL` to include no-ai-slop editorial judgments too. A model flag alone does not broaden a deterministic-only selection.
 
-For project-wide opt-in, **replace** the earlier `[tool.style-audit]` table with the following block. Do not add a second table with the same name.
+For project-wide opt-in, **replace** the earlier `[tool.style-audit]` table with the following block. Do not add a second table with the same name:
 
 ```toml
 [tool.style-audit]
@@ -127,22 +111,16 @@ output = "text"
 
 [tool.style-audit.llm]
 enabled = true
-model = "azure-maas-judge/Decision-1"
-threshold = 0.8
+model = "openai/gpt-4o-mini"
 
 [tool.style-audit.llm.litellm]
-api_base = "https://<your-foundry-host>.services.ai.azure.com/api/projects/<project>"
-custom_llm_provider = "azure_ai"
-decision_model = "Decision-1"
+api_key_env = "OPENAI_API_KEY"
+custom_llm_provider = "openai"
 ```
 
-This example uses the OMP registry's `apiKey`. The project `api_base` overrides its `baseUrl`. Never put a raw key in TOML. An optional `api_key_env` can select a different environment variable, which must be set and does not fall back to the registry.
+Set `OPENAI_API_KEY` in the environment before running this example. The optional `[tool.style-audit.llm.litellm]` table can override the API base, API-key environment variable, provider, timeout, and temperature for other LiteLLM chat models; see [LiteLLM transport settings](configuration.md#litellm-transport-settings).
 
-Subsequent `uv run style-audit` commands use this project configuration and the OMP registry for the model entry and key. Unless `api_key_env` is configured, `AZURE_MAAS_JUDGE_API_KEY` overrides the registry `apiKey`. When that variable is unset, style-audit uses the registry key.
-
-Selected LLM rules send masked document units to the configured provider and can incur charges. Adding rule scopes can increase request volume. The threshold applies to Decision-1 finding probabilities, not to LiteLLM chat-model responses.
-
-A previous audit of `wages-report/report.md` through the OpenAI Decisions adapter returned LiteLLM `ServiceUnavailableError`. After switching to the Foundry route, one document-scoped `NAS113` check on that file completed with no findings; the full `wages-report` NAS/RDL audit remains unrun. The separate Marimo system-design audit exited `1` with three `NAS117` findings and no `RDL` findings. See the [dogfooding record](dogfooding.md#observed-marimo-system-design-audit).
+Selected LLM rules send masked document units to the configured provider and can incur charges. Adding rule scopes can increase request volume.
 
 ### Other checkouts and CI
 

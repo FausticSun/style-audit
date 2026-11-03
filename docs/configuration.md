@@ -14,8 +14,7 @@ output = "text"
 
 [tool.style-audit.llm]
 enabled = false
-model = "openrouter/microsoft/microsoft-decision-1"
-threshold = 0.8
+model = "openai/gpt-4o-mini"
 ```
 
 All settings are optional. Directory scanning defaults to `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Ordinary Python files audit docstrings; recognized Marimo `.py` apps audit direct Markdown cell literals.
@@ -30,44 +29,46 @@ The `llm` table accepts:
 | Setting | Type and default | Effect |
 | --- | --- | --- |
 | `enabled` | Boolean, default `false` | Opts selected LLM rules into judging; it never adds rules to the effective selection. |
-| `model` | Optional non-empty string, no default | Required for LLM judging. A configured model alone does not enable global judging. |
-| `threshold` | Finite number in `[0, 1]`, default `0.8` | Emit decision findings when probability is greater than or equal to this value. |
+| `model` | Optional non-empty string, no default | LiteLLM `provider/model` name for the selected API; required for LLM judging. A configured model alone does not enable global judging. |
+| `api` | `completion` or `decisions`, default `completion` | Selects LiteLLM chat completions with quoted findings, or the provider-neutral Decisions API with probability findings. |
+| `threshold` | Finite number in `[0, 1]`, default `0.82` | Decisions mode only; emits findings when the returned predicate probability is at least this value. |
 
-Use `azure-maas-judge/Decision-1` for Azure MaaS Decisions judging. The public selector syntax is `azure-maas-judge/<model-id>`. The OMP registry supplies defaults for its base URL and API key, while `[tool.style-audit.llm.litellm]` can override LiteLLM settings as described below. The registry's `api: openrouter-decisions` selects the Decisions interface, not the OpenRouter service.
+Use LiteLLM's standard `provider/model` syntax. For example, `openai/gpt-4o-mini` uses the provider's `OPENAI_API_KEY` credential by default. `api_key_env` can name another environment variable when required. Never put raw credentials in project TOML.
 
-Other model names use LiteLLM chat completions directly. If a Decisions-selected model rejects its first Decisions request as unsupported or unavailable on that endpoint, style-audit switches that model to chat completions; authentication and other failures remain errors. Chat findings do not use the probability threshold. For example, `openai/gpt-4o-mini` requires its provider's configuration. Never put raw credentials in project TOML.
+LLM judging is off by default, including when the default Markdown selection contains RDL rules. A configured model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true` (with a model), `--llm` or `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules also opts that file in. See [LLM review and privacy](llm.md) for request content and provider behavior.
 
-For OpenRouter Microsoft Decision-1, set `OPENROUTER_API_KEY`. LiteLLM's `systemone` adapter sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`; this model does not use chat completions. No OMP registry or custom endpoint is needed. If overriding `api_base`, use the OpenRouter API root (`https://openrouter.ai/api`), not the chat `/api/v1` base.
+To use the Decisions API, configure the model, API, and probability threshold explicitly:
 
-LLM judging is off by default, including when the default Markdown selection contains RDL rules. A configured model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true` (with a model), `--llm` or `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules also opts that file in. See [LLM review and privacy](llm.md) for request content and backend differences.
+```toml
+[tool.style-audit.llm]
+enabled = true
+model = "typesafe/jev-latest"
+api = "decisions"
+threshold = 0.82
+```
+
 
 ### LiteLLM transport settings
 
-The optional `[tool.style-audit.llm.litellm]` table supplies LiteLLM settings for chat and Decisions requests. `custom_llm_provider` selects LiteLLM's provider-specific Decisions adapter. OpenRouter Decision-1 uses `openrouter`; Microsoft Foundry project endpoints use `azure_ai`, and OpenAI-compatible endpoints use `openai`. Style-audit passes the configured base and key explicitly.
-
-The OMP registry still uses `api: openrouter-decisions` for its legacy Azure MaaS model entry. That value identifies the Decisions interface and does not route requests through OpenRouter.
+The optional `[tool.style-audit.llm.litellm]` table supplies transport settings for LiteLLM completions or Decisions. LiteLLM uses the model's provider prefix and standard credentials unless these settings override them.
 
 ```toml
 [tool.style-audit.llm.litellm]
-api_base = "https://<your-foundry-host>.services.ai.azure.com/api/projects/<project>"
-custom_llm_provider = "azure_ai"
-decision_model = "Decision-1"
+api_key_env = "OPENAI_API_KEY"
+custom_llm_provider = "openai"
 timeout = 120
 temperature = 0
 ```
 
 | Setting | Type and default | Effect |
 | --- | --- | --- |
-| `api_base` | Optional non-empty URL; OpenRouter Decisions default to `https://openrouter.ai/api`, and Azure MaaS can fall back to the OMP provider's `baseUrl` | Sets LiteLLM's API base, which requires HTTPS except for loopback HTTP and rejects embedded credentials, query strings, and fragments. |
-| `api_key_env` | Optional environment-variable name | Uses that variable's value as the API key, which must be set. OpenRouter defaults to `OPENROUTER_API_KEY`; Azure MaaS otherwise checks `AZURE_MAAS_JUDGE_API_KEY` and then the OMP registry key. |
-| `custom_llm_provider` | Optional non-empty string | Selects LiteLLM's Decisions adapter. OpenRouter Decision-1 requires `openrouter`; Azure MaaS defaults to `openai`, with `azure_ai` for Microsoft Foundry project endpoints. |
-| `decision_model` | Optional non-empty string, or the CLI model ID when omitted | Selects the Decisions model ID. OpenRouter adds the `openrouter/` prefix when it is omitted; Azure MaaS validates IDs against the OMP model list when that registry is loaded. |
+| `api_base` | Optional non-empty URL | Overrides the API base passed to LiteLLM. It must use HTTPS except for loopback HTTP and cannot contain embedded credentials, query strings, or fragments. |
+| `api_key_env` | Optional environment-variable name | Uses that variable's value as the API key; the named variable must be set. If omitted, LiteLLM uses the provider's standard credential configuration. |
+| `custom_llm_provider` | Optional non-empty string | Overrides the provider inferred from the model name. |
 | `timeout` | Optional finite positive number of seconds | Overrides LiteLLM's request timeout. |
-| `temperature` | Finite number in `[0, 2]`, default `0` | Sets chat-completion temperature. Decisions requests do not use it. |
+| `temperature` | Finite number in `[0, 2]`, default `0` | Sets chat-completion temperature. It is not sent to the Decisions API; nonzero values are rejected when `api = "decisions"`. |
 
-Project values override matching Azure MaaS settings from the OMP registry. The registry supplies `baseUrl` and/or `apiKey` when those are not supplied by project settings or environment, and validates the selected model ID against its `models` list when loaded. A project `api_base` plus `api_key_env` can provide the full endpoint and credential source without registry lookup. OpenRouter calls use OpenRouter credentials and the Decisions endpoint directly; they do not read this registry. Never put a raw key in TOML. Use an environment-variable name or the user-level registry, and protect the registry file.
-
-TOML `threshold` accepts integers or floats, but rejects booleans, strings, nonfinite values (`nan` and `inf`), and values outside `[0, 1]`. `--threshold` overrides the configured value. Its effective value must also be finite and in range. Invalid settings fail with exit `2`, not an empty successful audit. The threshold neither enables LLM review nor changes rule selection. It has no filtering effect on chat responses, which do not return decision probabilities.
+Never put a raw key in TOML. Set the provider's standard credential variable or choose one with `api_key_env`; its value must be present in the environment.
 
 ## Rule-specific word lists
 
@@ -90,6 +91,77 @@ For STE Rule 1.1 (STE101), `disallowed-words` also produces local findings when 
 Local lexical checks scan visible prose, not masked quotations or code, and apply case-insensitive whole-term boundaries to entries. A list may contain a word or a multiword term. Invalid tables, scalar values, and empty entries fail configuration loading with exit status `2`.
 
 
+## Project-defined rulesets
+
+Declare one or more UTF-8 YAML catalogs in `[tool.style-audit]`. Each catalog may contain multiple custom rules:
+
+```toml
+[tool.style-audit]
+rule-catalogs = ["rules/team-style.yaml"]
+select = ["TEAM"]
+```
+
+Catalog paths are relative to the `pyproject.toml` that declares them. Absolute paths, `..` traversal, and symlinks resolving outside that project are rejected. Missing, unreadable, or invalid catalogs fail with exit status `2`. Rule IDs must be unique across bundled and project catalogs.
+
+Each file uses catalog schema version `1` and a non-empty `rules` array. Every record requires `code`, `name`, `engine`, `scope`, `source`, and at least one `examples` entry with `before`, `after`, and `explanation`. Use `engine = deterministic` with a `description` and a typed `detector`, or `engine = llm` with a `prompt`:
+
+```yaml
+schema_version: 1
+rules:
+  - code: TEAM001
+    name: Weak intensifier
+    engine: deterministic
+    scope: sentence
+    source: https://example.com/team-style#intensifiers
+    description: Flag the weak intensifier very.
+    detector:
+      kind: regex
+      pattern: '(?<!\w)very(?!\w)'
+      target: unit
+      message: Replace {evidence!r} with a specific description.
+      fix: State the measurable property directly.
+    examples:
+      - before: The service is very fast.
+        after: The service is fast.
+        explanation: Replace the vague intensifier with a direct claim.
+```
+
+Regex detector fields and scopes use the same validated schema as the packaged catalogs. Select custom rules by ID or prefix in `select`, `per-file-select`, or `--select`; ignore and glob selectors apply to them too. Custom catalogs do not change the default Markdown selection of `NAS` and `RDL`, so add custom prefixes to `select` or a matching per-file entry to run them on Markdown. LLM rules follow the normal opt-in and privacy contract: an explicit selection plus a model can send selected rule prompts, examples, and audited prose to the configured provider. See [LLM review and privacy](llm.md).
+
+## Per-rule overrides
+
+Use one or more UTF-8 YAML override catalogs to change fields on bundled or project-defined rules:
+
+```toml
+[tool.style-audit]
+rule-overrides = ["rules/local-overrides.yaml"]
+```
+
+Each file uses schema version `1` and a non-empty `overrides` array. A record identifies an existing rule by `code` and supplies at least one field to replace:
+
+```yaml
+schema_version: 1
+overrides:
+  - code: NAS001
+    additional-terms:
+      - circle back
+      - low-hanging fruit
+  - code: NAS106
+    prompt: >-
+      Flag claims that a routine change marks a pivotal moment. Preserve concrete outcomes.
+    examples:
+      - before: The update marks a pivotal moment.
+        after: The update adds export support.
+        explanation: Describe the concrete change without ranking its importance.
+```
+
+Overrides are partial: omitted fields retain their catalog values. `name`, `source`, `scope`, and `examples` apply to either engine; `prompt` applies only to LLM rules, while `description` applies only to deterministic rules. `examples` replaces the rule's stored examples and is included in LLM requests as contextual reference data, not as instructions or verified facts. The LLM rule's `prompt` remains its rule guidance.
+
+`detector` accepts a partial table for a deterministic rule and merges its keys into that rule's existing typed detector. This can change a regex rule's `pattern`, `flags`, `target`, `message`, or `fix` without replacing unrelated detector fields; it cannot change the detector kind. `additional-terms` adds case-insensitive whole-term matches to any regex rule, including custom regex rules. Each term may contain multiple words. It is additive and cannot be used with sentence-count or LLM rules.
+
+Override paths follow the same project-relative and symlink-containment rules as [rule catalogs](#project-defined-rulesets). Rule IDs may appear only once across all configured override files. Unknown rules, duplicate overrides, unsupported fields, invalid detector values, and unreadable files fail configuration with exit status `2`. Overrides change rule metadata and execution but not rule selection; `select`, `per-file-select`, and CLI selection still use the original rule ID.
+
+
 ## Selection, ignoring, and LLM opt-in
 
 Without a non-empty `select`, `.md` inputs with no matching per-file entry default to the `NAS` and `RDL` catalogs; other unmatched inputs retain all registered rules. This changes rule selection only; LLM judging remains opt-in. A non-empty global `select` or matching per-file entry overrides the Markdown default. `ignore` removes rules from the effective selection.
@@ -100,15 +172,15 @@ Without a non-empty `select`, `.md` inputs with no matching per-file entry defau
 
 `*`, `?`, and bracket classes use Python `fnmatchcase` semantics. Entries without glob characters retain prefix matching. Matching is case-sensitive. Default `.md` selection does not enable remote review or choose a model; LLM rules require explicit opt-in and a model.
 
-Selection does not change a rule's scope. Every deterministic and LLM rule has a canonical sentence, paragraph, section, or document assignment in the generated [rule reference](reference/rules.md). There are no scope overrides in TOML or on the CLI. Both LLM backends group selected rules by that metadata, requesting only the matching-scope rules and masked text of each eligible unit. Selecting additional scopes can increase remote request volume. See [segmentation, privacy, and cost](llm.md#canonical-scopes-and-segmentation).
+LLM rules share one synchronous request per eligible unit and scope in completion mode. Decisions mode uses the same scope units and sends up to 128 predicate questions per request; larger scopes of selected rules are split into multiple requests. See [segmentation, privacy, and cost](llm.md#canonical-scopes-and-segmentation).
 
 CLI `--select` replaces both configured `select` and per-file selections, while CLI `--ignore` is combined with configured `ignore`. Unknown selectors in the effective global selection, ignores, or any per-file entry are errors. Per-file entries are validated even when unused or overridden by CLI selection. Quote CLI globs so the shell does not expand them. Examples:
 
 ```sh
 style-audit --select NAS001,NAS003 draft.md
 style-audit --ignore NAS003 docs/
-style-audit --select NAS101 --model azure-maas-judge/Decision-1 --threshold 0.9 draft.md
-style-audit --select RDL --model azure-maas-judge/Decision-1 draft.md
+style-audit --select NAS101 --model openai/gpt-4o-mini draft.md
+style-audit --select RDL --model openai/gpt-4o-mini draft.md
 ```
 
 LLM judging remains off by default, including for default `.md` selections. It requires selected LLM rules and an explicit opt-in: `[tool.style-audit.llm].enabled = true` (which requires a configured model), `--llm`, `--model`, or explicitly selecting an LLM rule. A matching per-file entry selecting LLM rules opts that file in. Explicit CLI/model/rule-selection opt-ins still take precedence over `enabled = false`. `--llm` does not broaden `select`; deterministic-only checks never send text remotely.
@@ -131,7 +203,7 @@ ignore = ["NAS003"]
 "generated/**" = []
 
 [tool.style-audit.llm]
-model = "azure-maas-judge/Decision-1"
+model = "openai/gpt-4o-mini"
 ```
 
 File patterns match case-sensitive, slash-separated paths **relative to the directory containing the selected `pyproject.toml`**, not the invocation directory. Running from a nested directory or supplying `--config` preserves that root. Paths outside it contain `../` components. Both file and rule globs use Python `fnmatchcase`: `*` spans directory separators, so `"*.py"` matches Python files at any depth and `"docs/*.md"` includes nested Markdown files.

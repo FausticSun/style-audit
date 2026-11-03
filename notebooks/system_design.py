@@ -66,10 +66,8 @@ def _(mo):
     PLAN --> OPT{"Selected LLM rules opted in?"}
     OPT -->|Yes| JUDGE["LiteLLM judge"]
     OPT -->|No| MERGE["Sort diagnostics"]
-    JUDGE --> CHAT["Chat completions"]
-    JUDGE --> DECISION["Decisions API"]
+    JUDGE --> CHAT["LiteLLM chat completions"]
     CHAT --> MERGE
-    DECISION --> MERGE
     LOCAL --> MERGE
     MERGE --> REPORT["Text or JSON report"]
     REPORT --> EXIT["Exit status 0, 1, or 2"]"""
@@ -91,11 +89,11 @@ def _(mo):
 def _(mo):
     module_rows = [
         {"Layer": "Entry", "Modules": "__init__.py, __main__.py, cli.py", "Contract": "Console and module entry points; discover inputs; resolve each file's rule plan; map operational failures to exit 2."},
-        {"Layer": "Configuration", "Modules": "config.py", "Contract": "Discover and validate [tool.style-audit]; hold global/per-file selectors, local vocabularies, LLM opt-in, thresholds, and transport settings."},
+        {"Layer": "Configuration", "Modules": "config.py", "Contract": "Discover and validate [tool.style-audit]; hold global/per-file selectors, local vocabularies, LLM opt-in, and LiteLLM transport settings."},
         {"Layer": "Input adapters", "Modules": "docstrings.py, marimo_docs.py, gherkin.py", "Contract": "Extract Python docstrings and Marimo Markdown without executing code; mask Gherkin syntax and fixtures without running scenarios."},
         {"Layer": "Text model", "Modules": "text.py", "Contract": "Represent visible prose, masks, source maps, logical units, spans, and original-source evidence."},
         {"Layer": "Policy", "Modules": "rules/no-ai-slop.yaml, rules/readability.yaml, rules/technical-english.yaml, rule_catalog.py, rules/__init__.py", "Contract": "Canonical validated ruleset YAML metadata, prompts, detectors, scope, source citations, and examples."},
-        {"Layer": "Execution", "Modules": "deterministic.py, llm.py, decision_api.py", "Contract": "Run selected local checks; call LiteLLM chat or Decisions judging by scope; validate provider responses."},
+        {"Layer": "Execution", "Modules": "deterministic.py, llm.py", "Contract": "Run selected local checks; call LiteLLM chat completions by scope; validate structured findings."},
         {"Layer": "Output", "Modules": "models.py, reporting.py", "Contract": "Carry immutable Rule/Diagnostic values; sort findings; render versioned JSON or text."},
     ]
     mo.ui.table(module_rows, pagination=False, selection=None)
@@ -216,9 +214,9 @@ def _(mo):
     mo.md("""
     ## Remote judging and trust boundaries
 
-    Chat models use LiteLLM chat completions and must return structured findings with exact visible evidence quotes inside the current unit. Azure MaaS Decision-1 uses LiteLLM's Decisions `systemone` API; answers must match the requested rule IDs and contain finite probabilities in `[0, 1]`. Decision findings use the inclusive configured threshold. Provider or validation failures are operational errors, not clean results.
+    All model judging uses `litellm.completion` with LiteLLM's `provider/model` syntax. For example, `openai/gpt-4o-mini` uses `OPENAI_API_KEY`; configure other providers with their standard credentials. The model must return a JSON `findings` array with selected rule IDs, exact visible evidence quotes within the current unit, non-empty reasons, and optional fixes. The application validates response structure, rule IDs, fields, and evidence; provider and validation failures are operational errors, not clean results.
 
-    The Decisions base, provider, and model can be overridden in project TOML; otherwise the OMP `azure-maas-judge` registry supplies defaults. A configured `api_key_env` is mandatory when selected; otherwise `AZURE_MAAS_JUDGE_API_KEY` overrides the registry key. Requests are synchronous and per eligible scope unit. The application has no cache, retry, or backend fallback.
+    Each scope groups its matching rules, and style-audit sends one synchronous request per eligible masked unit without unrelated document context. Generic `[tool.style-audit.llm.litellm]` settings may override `api_base`, `api_key_env`, `custom_llm_provider`, timeout, and temperature. The application adds no retries or caching.
 
     **Privacy boundary:** deterministic checks stay local. Opted-in LLM rules send visible prose from the selected masked unit. Python comments and executable code, Gherkin fixtures, and masked code/quotes are excluded from model input, but masking is not sensitive-data redaction. Visible docstring and Gherkin prose can still contain private information.
     """)
@@ -238,7 +236,7 @@ def _(mo):
     | `1` | Findings reported |
     | `2` | Configuration, input, provider, or response-validation error |
 
-    The suite combines focused unit tests with pytest-bdd acceptance scenarios. Tests use controlled providers; the Decision adapter also has a local HTTP route smoke test. No test requires provider credentials. The installed command is `style-audit`; `python -m style_audit` exposes the same CLI.
+    The suite combines focused unit tests with pytest-bdd acceptance scenarios. Tests use controlled LiteLLM chat completions and require no provider credentials. The installed command is `style-audit`; `python -m style_audit` exposes the same CLI.
 
     Run or export this report from the repository root:
 
@@ -248,7 +246,7 @@ def _(mo):
     uv run marimo export html notebooks/system_design.py -o /tmp/style-audit-system-design.html
     ```
 
-    **Implementation references:** `src/style_audit/cli.py`, `config.py`, `docstrings.py`, `marimo_docs.py`, `gherkin.py`, `text.py`, `rules/no-ai-slop.yaml`, `rules/readability.yaml`, `rules/technical-english.yaml`, `rule_catalog.py`, `src/style_audit/rules/__init__.py`, `deterministic.py`, `llm.py`, `decision_api.py`, `models.py`, and `reporting.py`. The checked-in [architecture guide](../docs/architecture.md) records the package contracts.
+    **Implementation references:** `src/style_audit/cli.py`, `config.py`, `docstrings.py`, `marimo_docs.py`, `gherkin.py`, `text.py`, `rules/no-ai-slop.yaml`, `rules/readability.yaml`, `rules/technical-english.yaml`, `rule_catalog.py`, `src/style_audit/rules/__init__.py`, `deterministic.py`, `llm.py`, `models.py`, and `reporting.py`. The checked-in [architecture guide](../docs/architecture.md) records the package contracts.
     """)
     return
 

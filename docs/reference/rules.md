@@ -17,7 +17,7 @@ Use the [generated-rule audit](../dogfooding.md#audit-the-generated-rule-catalog
 ```sh
 style-audit draft.md --select NAS00
 style-audit draft.md --select STE606,STE801
-style-audit draft.md --select STE --model azure-maas-judge/Decision-1
+style-audit draft.md --select STE --model openai/gpt-4o-mini
 ```
 
 See [selection and ignoring](../configuration.md#selection-ignoring-and-llm-opt-in) for exact IDs, prefixes, rule globs, and CLI precedence. [Per-file rule selection](../configuration.md#per-file-rule-selection) maps file patterns to rulesets in `pyproject.toml`.

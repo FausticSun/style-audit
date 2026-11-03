@@ -6,7 +6,7 @@ LLM rules are subjective editorial judgments—not an AI-authorship detector. De
 
 When no global selection or matching per-file selection overrides it, an `.md` input uses `NAS` and `RDL`. This is a rule-selection default only: no model is chosen and no content is sent remotely unless judging is separately enabled. Opt in with `[tool.style-audit.llm].enabled = true` plus a configured model, `--llm` plus a model, `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules opts that file in. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default selection applies only to `.md`, not `.markdown`, `.rst`, `.txt`, Python, or Gherkin inputs.
 
-The default selection alone causes no remote request or charge. Once enabled, review sends visible prose to the configured provider and may incur charges. Masking is not sensitive-data redaction; see [what the request contains](#what-the-request-contains).
+The default selection alone causes no remote request or charge. Once enabled, review sends visible prose and the selected rules' guidance and examples to the configured provider and may incur charges. Masking is not sensitive-data redaction; see [what the request contains](#what-the-request-contains).
 
 ## Opt in
 
@@ -16,42 +16,38 @@ select = ["NAS001", "NAS106"]
 
 [tool.style-audit.llm]
 enabled = true
-model = "openrouter/microsoft/microsoft-decision-1"
-threshold = 0.8
+model = "openai/gpt-4o-mini"
 ```
 
 Or enable one invocation:
 
 ```sh
-style-audit --llm --model openrouter/microsoft/microsoft-decision-1 --threshold 0.8 draft.md
-style-audit --select NAS106 --model openrouter/microsoft/microsoft-decision-1 --threshold 0.9 draft.md
+style-audit --llm --model openai/gpt-4o-mini draft.md
+style-audit --select NAS106 --model openai/gpt-4o-mini draft.md
 ```
 
 [Per-file selections](configuration.md#per-file-rule-selection) can enable editorial rules only for matching paths. A matching entry that explicitly selects an LLM rule opts into that file's review, and the same entry does not enable review of unmatched files.
 
 No model is supplied automatically. LLM judging requires a configured or command-line model. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
 
-Use `openrouter/microsoft/microsoft-decision-1` for Microsoft Decision-1 on OpenRouter. Set `OPENROUTER_API_KEY`; LiteLLM routes the model through `POST https://openrouter.ai/api/alpha/decisions` with its `systemone` adapter, not through chat completions. No OMP registry or custom endpoint is needed. If you set `api_base`, use `https://openrouter.ai/api`.
+LLM models use LiteLLM's `provider/model` syntax and standard provider credentials. For example, `openai/gpt-4o-mini` uses `OPENAI_API_KEY`; use the provider's documented credential variable for other models.
 
-The existing `azure-maas-judge/Decision-1` selector remains available for the configured Azure MaaS Decisions model. Its public selector syntax is `azure-maas-judge/<model-id>`. When registry settings are needed, OMP lookup prefers `~/.omp/agent/models.yml`, then `~/.omp/agents/models.yml`.
 
-When OMP registry lookup is needed, `providers.azure-maas-judge` uses `api: openrouter-decisions` and lists the model ID (with `baseUrl` and `apiKey` when the registry supplies them). That API value selects the Decisions interface, not the LiteLLM route or OpenRouter service. LiteLLM defaults to `custom_llm_provider = "openai"`. Set it to `azure_ai` for a Microsoft Foundry project endpoint. Project `[tool.style-audit.llm.litellm]` settings override matching registry defaults.
+Do not put raw API keys in TOML. The optional `api_key_env` setting names an environment variable, not its secret value. See [configuration](configuration.md#litellm-transport-settings) for supported transport settings.
 
-Do not put raw API keys in TOML. `api_key_env` contains only an environment-variable name. See [configuration](configuration.md#litellm-transport-settings) for precedence and supported fields.
-
-Other models retain LiteLLM chat-completion judging, using LiteLLM's provider/model syntax and the matching provider configuration. For example:
+Chat-completion judging remains the default and returns validated quotes, reasons, and optional fixes. Set `[tool.style-audit.llm].api = "decisions"` to use LiteLLM's provider-neutral Decisions API instead; `threshold` defaults to `0.82`. The model name still uses LiteLLM's `provider/model` syntax, and LiteLLM handles provider routing for both APIs without provider-specific style-audit branches.
 
 ```sh
 style-audit --select NAS106 --model openai/gpt-4o-mini draft.md
 ```
 
-A model in configuration by itself does not enable global remote calls. Default `.md` inputs select `NAS` and `RDL`, but that selection does not send text remotely. Judging requires selected LLM rules plus an opt-in through `llm.enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file selection. With configured selection, only retained rules are eligible. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`. `--threshold` alone does not enable judging.
+A model in configuration by itself does not enable global remote calls. Default `.md` inputs select `NAS` and `RDL`, but that selection does not send text remotely. Judging requires selected LLM rules plus an opt-in through `llm.enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file selection. With configured selection, only retained rules are eligible. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`.
 
 ## What the request contains
 
 ### Canonical scopes and segmentation
 
-Every rule has a required `scope` in the registry: **sentence**, **paragraph**, **section**, or **document**. Scope defines the logical unit to audit, not the size of a model-generated evidence quote. It is fixed rule metadata, and neither TOML nor CLI options override it. The generated [rule reference](reference/rules.md) is the source of truth for individual assignments.
+Every rule has a required `scope` in the registry: **sentence**, **paragraph**, **section**, or **document**. Scope defines the logical unit to audit, not the size of a model-generated evidence quote. It remains fixed unless a project overrides it in `rule-overrides`. The generated [rule reference](reference/rules.md) documents bundled assignments.
 
 The independent `RDL` [readability ruleset](reference/readability.md) uses sentence scope for contextual processing-difficulty judgments. It works with both backends and the same opt-in contract. It does not measure corpus frequency, n-gram perplexity, or standardized dependency length.
 
@@ -64,7 +60,7 @@ The independent `RDL` [readability ruleset](reference/readability.md) uses sente
 
 Leading and trailing original whitespace is trimmed from units. Fenced/inline code and paired quotation spans are replaced with same-length whitespace, preserving newlines and original Unicode offsets. Inline masks do not split a logical sentence or paragraph into separate visible runs. Blank or fully masked units are skipped by both backends.
 
-Both APIs group selected LLM rules by scope and make one synchronous request per eligible unit for each selected scope. A request includes only rules in that scope and `{"scope": scope, "text": masked_unit_text}`. There is no extra full-document context for smaller scopes. Selecting rules from several scopes audits the corresponding overlapping views of the input. Rules sharing a scope share each unit request.
+Both APIs group selected LLM rules by scope and audit one eligible unit at a time. Completion mode makes one `litellm.completion` request per unit; Decisions mode makes one `litellm.decisions` request per unit and question batch (at most 128 questions per request). Each request contains only the current masked unit and matching-scope rule guidance/examples; smaller-scope requests do not receive unrelated document context.
 
 ### Python docstrings
 
@@ -83,55 +79,38 @@ Recognized Marimo `.py` apps are parsed without importing the module or running 
 Source maps retain original Unicode positions and source spelling through string decoding and indentation cleanup. This is not redaction: private prose in an extracted cell remains eligible for remote transmission when LLM rules are explicitly selected. Variable-derived Markdown and text generated only at runtime are outside the static extraction boundary.
 
 
-### Decision judging
-
-For `azure-maas-judge/<model-id>`, the application passes the selected ID (or the project `decision_model` override) to LiteLLM's `systemone` Decisions API. `api_base` comes from the project setting or OMP `baseUrl`. `custom_llm_provider` comes from the project setting or defaults to `openai`. Style-audit passes it through to LiteLLM without restricting its value. If `api_key_env` is configured, that named environment variable must be set. Otherwise `AZURE_MAAS_JUDGE_API_KEY` overrides the OMP `apiKey`.
-
-LiteLLM selects the route from `custom_llm_provider`: `azure_ai` uses `/providers/microsoft/v1/systemone` for a Foundry project endpoint, while `openai` uses `/openai/v1/decisions` for a base ending `/openai/v1`. The OMP `api: openrouter-decisions` value identifies the Decisions interface but does not route requests through the OpenRouter service. Style-audit passes the configured base URL and key, so the adapter does not use OpenAI's public endpoint. Other model names continue to use LiteLLM chat completions.
-
-If the first Decisions request returns HTTP 404, 405, or 501, or the provider says the model is unsupported or unavailable on the Decisions/systemone endpoint (including OpenRouter's `Model … does not exist` response), style-audit switches the entire audit to LiteLLM chat completions using the same resolved model, provider, credentials, and timeout at that provider's chat endpoint (OpenRouter chat uses `/v1`). This switch happens only before any successful Decisions response, so an error after successful decision judgments remains an operational failure rather than replaying those units. Authentication, quota, timeout, malformed-answer, and other provider failures do not trigger fallback.
-
-Chat fallback returns structured findings without decision probabilities; `threshold` does not filter them. The rejected Decisions request already contains the first unit, so fallback may send that unit to the provider again through chat.
-
-A request through the OpenAI Decisions adapter returned `ServiceUnavailableError` (HTTP `503`). Later Foundry-route requests completed: a document-scoped `NAS113` check on `wages-report/report.md` returned no findings, and the Marimo system-design `NAS,RDL` audit returned three reviewed `NAS117` formatting findings and no `RDL` findings. The separate full `wages-report` NAS/RDL audit remains unrun. See the [dogfooding record](dogfooding.md#observed-marimo-system-design-audit) for the system-design audit scope.
-
-Shared decision `state` is the scope/text object described above. Questions are keyed by the matching-scope rule IDs and have `type="noul"`: each asks the bounded yes-or-no question of whether this unit violates that rule. Trusted instructions supply the scope, rule name, and description, restrict judgments to the unit's visible prose, preserve author voice and legitimate exceptions, and treat input content as untrusted data rather than instructions. Masked spans remain gaps inside the logical unit, not separately judged fragments.
-
-Each response must contain an `answers` mapping with exactly the requested rule IDs. Every answer must have `type="noul"` and a numeric, non-boolean, finite `noul` probability in `[0, 1]`. Missing or extra IDs, wrong answer types, and invalid probabilities are operational errors, even for answers that would fall below the threshold.
-
-A finding is emitted for each unit/rule pair whose probability is **greater than or equal to** the threshold. The default is `0.8`. A probability of exactly `0.8` is included at that threshold. Set `[tool.style-audit.llm].threshold` in TOML or override it with `--threshold`. Values must be finite numbers in `[0, 1]`. TOML booleans and strings are not numbers for this setting.
-
-Invalid values fail with exit `2`. Raising the threshold to `0.9` excludes more responses, while lowering it includes more. At `0`, every valid answer becomes a finding, including a zero probability. At `1`, only probabilities of exactly one qualify. Thresholds do not affect the chat backend.
-
-Decision evidence is the **complete original logical unit**, not a model-generated quotation or explanation. Original Unicode offsets locate it in the input, so equal text in different units retains distinct source locations. The evidence can contain masked quotation or code spans as source context, although those spans were not sent as judged prose. A document-scoped finding spans the trimmed document. The backend does not fabricate a more precise location.
-
-The message contains the scope, rule name, description, and returned probability. The API does not generate a fix, so `fix` is empty. The existing version-1 JSON finding schema is unchanged. Probability is part of `message`, not a new report field.
-
 ### Chat judging
 
-For other models, each scoped unit request is a LiteLLM chat completion. The user message is JSON containing the same `scope` and masked `text` fields used by decisions. The system prompt describes that scope and its selected rule IDs and descriptions, treats input as untrusted data, and tells the model not to follow its instructions. The original unmasked document and unrelated units are not added to the request.
+For each eligible unit in each selected scope, style-audit makes one synchronous `litellm.completion` request. The user message is JSON containing `scope` and masked `text`; the system prompt contains the matching-scope rule guidance and examples, treats the input as untrusted data, and instructs the model not to follow its instructions. The original unmasked document and unrelated units are not added to the request.
 
-The model is asked for a JSON object containing `findings`. Each item must include a requested `code`, a non-empty exact `evidence` quote, and a non-empty `reason`. `fix` is optional. Evidence must be a contiguous visible quote **within the current unit**.
+The model must return a JSON object containing `findings`. Each finding must include a selected `code`, a non-empty exact `evidence` quote, and a non-empty `reason`; `fix` is optional. Evidence must be a contiguous visible quote within the current unit.
 
-The application rejects malformed JSON, unknown, disabled, or wrong-scope IDs, invalid fields, and quotes inside masked spans or outside that unit. Matching evidence is restored to original source offsets within the current unit. Equal text elsewhere cannot relocate a finding. Chat responses have no decision probability and are not filtered by `threshold`. Temperature is set to zero.
+The application rejects malformed JSON, unknown, disabled, or wrong-scope IDs, invalid fields, and quotes inside masked spans or outside the unit. Matching evidence is restored to original source offsets within the current unit, so equal text elsewhere cannot relocate a finding. Temperature is set to zero.
+
+
+### Decisions judging
+
+Set `api = "decisions"` in `[tool.style-audit.llm]` to use `litellm.decisions` with the OpenAI Decisions request shape. Each enabled rule becomes a named `predicate` question; LiteLLM translates it for supported providers. No model-prefix checks or provider-specific adapters are used by style-audit.
+
+The API returns probabilities, not evidence quotes or rationales. A finding is emitted when the rule's probability is greater than or equal to the configured finite `threshold` in `[0, 1]` (default `0.82`). Its evidence and source span cover the full visible logical unit; masked code and quotation spans remain spaces. The diagnostic message combines the rule description and probability, and it has no generated fix. This is deliberately coarser than completion mode's exact quoted evidence.
+
+Every requested rule must have exactly one `predicate` answer with its requested name and a finite probability in `[0, 1]`. Missing, duplicate, unknown, malformed, or out-of-range answers and provider failures are operational errors, never clean results.
+
 
 ### Privacy, cost, and failures
 
-Masking is a matching and evidence boundary, **not sensitive-data redaction**. Both APIs send only the masked text of the current unit, but all unmasked prose in that unit is sent remotely and document-scoped rules send the masked document. Do not assume that masking protects secrets. There is no built-in sensitive-data redaction or caching.
+Masking is a matching and evidence boundary, **not sensitive-data redaction**. Completion requests send the masked current unit and selected rules' guidance/examples. Decisions requests send the same masked unit plus rule-specific question instructions. Rule configuration is sent as written. Do not assume that masking protects secrets. There is no built-in sensitive-data redaction or caching.
 
-The OMP model registry's `apiKey` is a secret stored in a user-level YAML file. Restrict access to that file, do not commit or share it, and prefer `AZURE_MAAS_JUDGE_API_KEY` from a secret store when appropriate. Review provider terms and retention practices before auditing sensitive content. These are outside the tool's control.
+Provider credentials are secrets. Keep them in an environment or secret store; do not commit them or place their values in TOML. Review provider terms and retention practices before auditing sensitive content; these are outside the tool's control.
 
-Calls may incur charges. Request count is the sum of eligible unit counts across the scopes of selected LLM rules, for either API. Adding another rule in an already selected scope adds a question or prompt description, not another request. Adding a new scope adds that scope's unit requests.
+Calls may incur charges. Completion request count is the sum of eligible unit counts across selected scopes. Decisions requests use the same units and scopes, split into batches of at most 128 questions when necessary. Adding another rule in an existing scope adds its guidance to the request; adding a new scope adds that scope's unit requests.
 
-Scopes can overlap, so text may be sent in sentence, paragraph, section, and document requests when all are selected. Unit lengths, rule counts, and response sizes also affect token cost. Smaller scopes omit unrelated document context but can produce more calls. The tool adds no retries or fallback to a different model/backend. Authentication, provider, transport, context-limit, and malformed-response failures are operational errors (exit `2`), never clean results. Valid answers below threshold or a valid empty chat `findings` array mean only that no findings were emitted.
+Scopes can overlap, so text may be sent in sentence, paragraph, section, and document requests when all are selected. Unit lengths, rule counts, and response sizes also affect token cost. Smaller scopes omit unrelated document context but can produce more calls. The tool adds no retries. Provider, transport, context-limit, and malformed-response failures are operational errors (exit `2`), never clean results. A valid empty `findings` array means only that no findings were emitted.
 
 ## Limitations and evidence
 
-Source anchoring proves that decision evidence is the original unit or that a chat quote occurs in that unit's visible prose. It does not prove correct rule interpretation, complete detection, or a good chat-generated fix.
+Completion evidence checks prove that a returned quote occurs in its unit's visible prose; they do not prove correct rule interpretation or complete detection. Decisions mode reports a rule probability for the whole unit and does not identify the offending phrase. Neither mode establishes authorship or truth.
 
-Decision probabilities are model signals, not a calibrated guarantee of editorial correctness or AI authorship. Threshold selection changes which signals are reported. It does not establish accuracy.
 
-Whole-unit decision evidence can include compliant text alongside a suspected violation, particularly at paragraph, section, and document scope. It does not identify a smaller offending phrase or supply a generated rationale.
-
-Both backends may vary across real calls. Working credentials and model availability are required for live review. Controlled-response tests can exercise scope grouping, unit boundaries, answer validation, source locations, and threshold boundaries without a provider, but do not establish live-provider behavior. The [dogfooding guide](dogfooding.md) records an authentication failure from before per-rule scope support as historical evidence, not a statement about current credentials or model judgments.
+Results from either API may vary across real calls. Working provider credentials and model availability are required for live review. Controlled-response tests cover request boundaries, response validation, source locations, and failure handling, but do not establish live-provider behavior.
 

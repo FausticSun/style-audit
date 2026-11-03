@@ -3,13 +3,10 @@ site_description: A Python writing-style auditor with local NLP checks and optio
 strict: true
 
 theme:
-  name: mkdocs
+  variant: modern
 
 plugins:
   - search
-
-hooks:
-  - docs/hooks.py
 
 markdown_extensions:
   - admonition
