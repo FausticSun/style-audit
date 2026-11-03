@@ -6,14 +6,16 @@ license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "litellm>=1.106.4", "PyYAML>=6.0"]
+dependencies = ["click>=8.1", "litellm>=1.106.4", "pydantic>=2.10,<3", "PyYAML>=6.0"]
 
 [project.scripts]
 style-audit = "style_audit:main"
 
+[project.optional-dependencies]
+marimo = ["marimo>=0.25.2"]
+
 [dependency-groups]
 dev = [
-    "marimo>=0.25.2",
     "pytest>=8.3",
     "pytest-bdd>=8.1",
 ]

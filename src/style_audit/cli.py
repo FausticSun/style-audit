@@ -1,7 +1,6 @@
 """Command-line entry point and path discovery."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 import fnmatch
 import math
 import os
@@ -9,8 +8,13 @@ from pathlib import Path
 import sys
 
 import click
+from pydantic import BaseModel, ConfigDict
 
-from .config import AuditConfig, load_config
+from .config import (
+    DEFAULT_MARKDOWN_SELECT,
+    AuditConfig,
+    load_config,
+)
 from .deterministic import analyze_deterministic
 from .docstrings import extract_docstrings
 from .marimo_docs import extract_markdown_cells
@@ -92,7 +96,10 @@ def _documents(path: str, text: str) -> list[TextDocument]:
         return extract_docstrings(path, text)
     if suffix == ".feature":
         return [document_from_feature(path, text)]
-    return [TextDocument(path, text)]
+    return [TextDocument(
+        path=path,
+        text=text,
+    )]
 
 def _collect(paths: Sequence[str], config: AuditConfig, stdin_text: str | None, stdin_name: str, cwd: Path) -> list[TextDocument]:
     if paths.count("-") > 1:
@@ -125,8 +132,9 @@ def _collect(paths: Sequence[str], config: AuditConfig, stdin_text: str | None, 
     return documents
 
 
-@dataclass(frozen=True)
-class CLIOptions:
+class CLIOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
     paths: tuple[str, ...]
     config: Path | None
     select: tuple[str, ...]
@@ -197,7 +205,17 @@ def build_cli() -> click.Command:
         threshold: float | None,
         stdin_filename: str,
     ) -> int:
-        options = CLIOptions(paths, config, select, ignore, format, llm, model, threshold, stdin_filename)
+        options = CLIOptions(
+            paths=paths,
+            config=config,
+            select=select,
+            ignore=ignore,
+            format=format,
+            llm=llm,
+            model=model,
+            threshold=threshold,
+            stdin_filename=stdin_filename,
+        )
         try:
             exit_code, rendered = run(options)
         except (AuditError, OSError) as exc:
@@ -227,27 +245,41 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
     if "-" in paths and stdin_text is None:
         stdin_text = sys.stdin.read()
     documents = _collect(paths, config, stdin_text, args.stdin_filename, working_directory)
-    rule_plans: dict[str, tuple[tuple[Rule, ...], tuple[Rule, ...]]] = {}
+    rule_plans: dict[str, tuple[tuple[Rule, ...], tuple[Rule, ...], str | None]] = {}
     for document in documents:
         if document.path in rule_plans:
             continue
         relative = Path(os.path.relpath(working_directory / document.path, config.root)).as_posix()
         matches = [codes for pattern, codes in per_file if fnmatch.fnmatchcase(relative, pattern)]
-        codes = set().union(*matches) if matches else enabled
+        is_default_markdown = (
+            Path(document.path).suffix.lower() == ".md"
+            and not args.select
+            and not config.select
+            and not matches
+        )
+        if matches:
+            codes = set().union(*matches)
+        elif is_default_markdown:
+            codes = _expand(DEFAULT_MARKDOWN_SELECT) - ignored
+        else:
+            codes = enabled
         rules = tuple(rule for rule in RULES if rule.code in codes)
         deterministic_rules = tuple(rule for rule in rules if rule.engine == "deterministic")
         llm_rules = tuple(rule for rule in rules if rule.engine == "llm")
         if config.ste_disallowed_words and any(rule.code == "STE101" for rule in rules):
             deterministic_rules += (RULES_BY_CODE["STE101"],)
         llm_selected = bool(args.select or config.select or matches)
-        use_llm = bool(llm_rules) and (config.llm_enabled or args.llm or args.model is not None or llm_selected)
-        if use_llm and not model:
+        use_llm = bool(llm_rules) and (
+            config.llm_enabled is True or args.llm or args.model is not None or llm_selected
+        )
+        document_model = model
+        if use_llm and document_model is None:
             raise AuditError("LLM judging requires an explicit model; configure [tool.style-audit.llm].model or pass --model")
-        rule_plans[document.path] = deterministic_rules, llm_rules if use_llm else ()
+        rule_plans[document.path] = deterministic_rules, llm_rules if use_llm else (), document_model
 
     findings: list[Diagnostic] = []
     for document in documents:
-        deterministic_rules, llm_rules = rule_plans[document.path]
+        deterministic_rules, llm_rules, document_model = rule_plans[document.path]
         if deterministic_rules:
             findings.extend(analyze_deterministic(
                 document,
@@ -260,7 +292,7 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
             findings.extend(judge_document(
                 document,
                 llm_rules,
-                model or "",
+                document_model or "",
                 threshold=threshold,
                 litellm_config=config.llm_litellm,
                 ste_allowed_words=config.ste_allowed_words,

@@ -10,6 +10,7 @@ Requires Python 3.12 or newer. Follow the [new Python/uv project walkthrough](do
 uv sync
 uv run style-audit README.md
 ```
+Marimo is optional: `uv sync --extra marimo` installs it for running the interactive system-design notebook. Static `.py` extraction does not import or require the Marimo package.
 
 ## Documentation
 
@@ -67,7 +68,7 @@ Apply different rules by file pattern with `[tool.style-audit.per-file-select]`,
 
 See the [configuration guide](docs/configuration.md), [CLI reference](docs/reference/cli.md), and [LLM privacy guide](docs/llm.md) for selection precedence, models, and provider behavior. An LLM opt-in never overrides a deterministic-only selection.
 
-OpenRouter provides optional Microsoft Decision-1 review through LiteLLM. Set `OPENROUTER_API_KEY` in your environment or secret manager; keep the value out of project TOML and version control.
+Default `.md` audits select no-ai-slop (`NAS`) and readability (`RDL`) rules. This selects checks; LLM judging remains opt-in, so a normal Markdown scan does not send text remotely. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. To use LLM rules, provide a model and opt in with `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, or explicit LLM-rule selection. OpenRouter requires `OPENROUTER_API_KEY`; remote review may incur charges.
 
 Example configuration:
 

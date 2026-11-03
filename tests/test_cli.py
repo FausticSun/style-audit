@@ -9,8 +9,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from click.testing import CliRunner
+from pydantic import ValidationError
 from style_audit.cli import CLIOptions, build_cli, main, run
-from style_audit.config import load_config
+from style_audit.config import AuditConfig, LiteLLMConfig, load_config
+from style_audit.decision_api import DecisionAPISettings, load_decision_api
 from style_audit.models import AuditError
 
 
@@ -102,6 +104,27 @@ class ConfigTests(unittest.TestCase):
                     with self.assertRaisesRegex(AuditError, "threshold"):
                         load_config(root)
 
+    def test_pydantic_configuration_models_are_strict_and_immutable(self) -> None:
+        with self.assertRaises(ValidationError):
+            LiteLLMConfig(timeout=True)
+        with self.assertRaises(ValidationError):
+            AuditConfig(root=Path.cwd(), llm_threshold=1.01)
+
+        config = AuditConfig(root=Path.cwd())
+        with self.assertRaises(ValidationError):
+            config.output = "json"
+        self.assertEqual(config.output, "text")
+
+    def test_unknown_litellm_transport_setting_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text(
+                "[tool.style-audit.llm.litellm]\nunknown_transport_setting = true\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(AuditError, "unsupported setting"):
+                load_config(root)
+
 
 class CliTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -122,6 +145,9 @@ class CliTests(unittest.TestCase):
             docs.mkdir()
             (docs / "draft.md").write_text("The robust integration shipped.\n", encoding="utf-8")
             (docs / "ignored.txt").write_text("The delve into detail was long.\n", encoding="utf-8")
+            for directory in (root, docs):
+                for filename in ("AGENTS.md", "SKILL.md"):
+                    (directory / filename).write_text("A robust instruction example.\n", encoding="utf-8")
             excluded = root / ".venv"
             excluded.mkdir()
             (excluded / "example.md").write_text("A robust example.\n", encoding="utf-8")
@@ -138,6 +164,125 @@ class CliTests(unittest.TestCase):
             self.assertEqual(len(report["findings"]), 2)
             self.assertEqual([item["path"] for item in report["findings"]], ["docs/draft.md", "docs/ignored.txt"])
             self.assertEqual({item["code"] for item in report["findings"]}, {"NAS001"})
+
+    def test_default_markdown_selects_nas_and_readability_with_explicit_model(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text("[tool.style-audit]\n", encoding="utf-8")
+            docs = root / "docs"
+            docs.mkdir()
+            (root / "README.md").write_text("A robust parser works.", encoding="utf-8")
+            (docs / "guide.md").write_text("A resilient parser works.", encoding="utf-8")
+            for directory in (root, docs):
+                (directory / "AGENTS.md").write_text("AGENTS_PRIVATE_481.", encoding="utf-8")
+                (directory / "SKILL.md").write_text("SKILL_PRIVATE_592.", encoding="utf-8")
+
+            requested_rules: set[str] = set()
+            requested_text: list[str] = []
+            requested_models: set[str] = set()
+
+            def judge(**kwargs):
+                questions = kwargs["questions"]
+                requested_rules.update(questions)
+                requested_text.append(kwargs["state"]["text"])
+                requested_models.add(kwargs["model"])
+                return SimpleNamespace(answers={
+                    code: SimpleNamespace(type="noul", noul=0.0)
+                    for code in questions
+                })
+            with patch.dict("os.environ", {"OPENROUTER_API_KEY": "controlled-test-key"}):
+                with patch("style_audit.llm.load_decision_api", wraps=load_decision_api):
+                    with patch("style_audit.llm.litellm.systemone", side_effect=judge) as provider:
+                        code, output = run(_parse_options([
+                            str(root), "--format", "json", "--model", "openrouter/microsoft/microsoft-decision-1",
+                        ]), cwd=root)
+
+            findings = json.loads(output)["findings"]
+            self.assertEqual(code, 1)
+            self.assertEqual(
+                [(item["path"], item["code"]) for item in findings],
+                [("README.md", "NAS001")],
+            )
+            self.assertTrue(any(rule.startswith("NAS") for rule in requested_rules))
+            self.assertTrue(any(rule.startswith("RDL") for rule in requested_rules))
+            self.assertFalse(any(rule.startswith("STE") for rule in requested_rules))
+            self.assertEqual(requested_models, {"openrouter/microsoft/microsoft-decision-1"})
+            self.assertTrue(any("A robust parser works." in text for text in requested_text))
+            self.assertTrue(any("A resilient parser works." in text for text in requested_text))
+            self.assertFalse(any(
+                "PRIVATE_481" in text or "PRIVATE_592" in text
+                for text in requested_text
+            ))
+            self.assertTrue(all(
+                request.kwargs["custom_llm_provider"] == "openrouter"
+                for request in provider.call_args_list
+            ))
+            self.assertTrue(all(
+                request.kwargs["api_base"] == "https://openrouter.ai/api"
+                for request in provider.call_args_list
+            ))
+
+    def test_default_markdown_is_local_without_llm_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text("[tool.style-audit]\n", encoding="utf-8")
+            (root / "README.md").write_text("A robust parser works.", encoding="utf-8")
+            with patch("style_audit.llm.litellm.systemone") as decision_provider:
+                with patch("style_audit.llm.litellm.completion") as chat_provider:
+                    code, output = run(_parse_options([str(root), "--format", "json"]), cwd=root)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(
+                [(item["path"], item["code"]) for item in json.loads(output)["findings"]],
+                [("README.md", "NAS001")],
+            )
+            decision_provider.assert_not_called()
+            chat_provider.assert_not_called()
+
+    def test_unsupported_decisions_endpoint_falls_back_through_cli(self) -> None:
+        class EndpointNotFoundError(RuntimeError):
+            status_code = 404
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            settings = DecisionAPISettings(
+                api_base="https://provider.example/openai/v1",
+                model="standard-chat-model",
+                custom_llm_provider="openai",
+                api_key="test-api-key",
+                timeout=12.0,
+            )
+            response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content=json.dumps({
+                    "findings": [{
+                        "code": "NAS106",
+                        "evidence": "marks a pivotal moment",
+                        "reason": "This announces importance without a concrete fact.",
+                    }],
+                }),
+            ))])
+            args = _parse_options([
+                "-", "--stdin-filename", "draft.md", "--select", "NAS106",
+                "--model", "azure-maas-judge/standard-chat-model", "--format", "json",
+            ])
+            with patch("style_audit.llm.load_decision_api", return_value=settings):
+                with patch("style_audit.llm.litellm.systemone", side_effect=EndpointNotFoundError("endpoint not found")) as decisions:
+                    with patch("style_audit.llm.litellm.completion", return_value=response) as chat:
+                        code, output = run(
+                            args,
+                            "The launch marks a pivotal moment for the team.",
+                            root,
+                        )
+
+        self.assertEqual(code, 1)
+        findings = json.loads(output)["findings"]
+        self.assertEqual([(item["code"], item["evidence"]) for item in findings], [
+            ("NAS106", "marks a pivotal moment"),
+        ])
+        decisions.assert_called_once()
+        chat.assert_called_once()
+        self.assertEqual(chat.call_args.kwargs["model"], settings.model)
+        self.assertEqual(chat.call_args.kwargs["api_key"], settings.api_key)
 
     def test_clean_stdin_and_explicit_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

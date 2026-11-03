@@ -37,6 +37,7 @@ class DecisionAPIConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.model, "Decision-1")
         self.assertEqual(settings.custom_llm_provider, "openai")
         self.assertNotIn("fixture-secret", repr(settings))
+        self.assertNotIn("api_key", settings.model_dump())
 
     def test_environment_key_overrides_the_registry_key(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -151,7 +152,10 @@ class DecisionAPIConfigurationTests(unittest.TestCase):
                 self.assertEqual(config.decision_model, "Decision-1")
                 self.assertEqual(config.timeout, 5.0)
                 self.assertEqual(config.temperature, 0.0)
-                document = TextDocument("draft.md", "The future isn't coming. It's already here.")
+                document = TextDocument(
+                    path="draft.md",
+                    text="The future isn't coming. It's already here.",
+                )
 
                 def load_registry_config(project_config, model_id):
                     return load_decision_api(project_config, model_id, registry_path=registry)
@@ -219,7 +223,10 @@ class DecisionAPIConfigurationTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 config = load_config(project).llm_litellm
-                document = TextDocument("draft.md", "The future isn't coming. It's already here.")
+                document = TextDocument(
+                    path="draft.md",
+                    text="The future isn't coming. It's already here.",
+                )
                 with patch("style_audit.llm.load_decision_api", side_effect=load_decision_api):
                     with patch.dict(
                         os.environ,

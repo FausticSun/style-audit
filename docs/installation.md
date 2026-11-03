@@ -164,7 +164,7 @@ uv sync
 uv run style-audit --help
 ```
 
-`uv sync` installs the project, its LiteLLM runtime dependency, and the `style-audit` console entry point. To install documentation dependencies as well, use `uv sync --group docs`.
+`uv sync` installs the project, its LiteLLM runtime dependency, and the `style-audit` console entry point. Marimo is an optional extra for running the interactive system-design notebook: use `uv sync --extra marimo`. Static Marimo source auditing only parses `.py` files and does not require Marimo to be installed. To install documentation dependencies as well, use `uv sync --group docs`.
 
 An installed package can also be invoked as a module:
 

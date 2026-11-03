@@ -2340,12 +2340,17 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "litellm" },
+    { name = "pydantic" },
     { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+marimo = [
+    { name = "marimo" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "marimo" },
     { name = "pytest" },
     { name = "pytest-bdd" },
 ]
@@ -2358,12 +2363,14 @@ docs = [
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "litellm", specifier = ">=1.106.4" },
+    { name = "marimo", marker = "extra == 'marimo'", specifier = ">=0.25.2" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
+provides-extras = ["marimo"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "marimo", specifier = ">=0.25.2" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-bdd", specifier = ">=8.1" },
 ]

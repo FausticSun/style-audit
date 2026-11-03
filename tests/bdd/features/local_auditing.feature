@@ -116,18 +116,18 @@ Feature: Local prose and Python docstring auditing
       allowed-words = ["actuator"]
       disallowed-words = ["snapshot"]
       """
-    And a file "draft.md" containing:
+    And a file "draft.txt" containing:
       """
       The snapshot is disallowed.
       "snapshot" and `snapshot` are quoted examples.
       The robust component works. ROBUSTNESS remains a different term.
       The excellent component serves as a tracker.
       """
-    When I run style-audit draft.md --format json
+    When I run style-audit draft.txt --format json
     Then the audit exits with 1
     And the report contains exactly these findings:
       | path     | code   | evidence   | line | column |
-      | draft.md | STE101 | snapshot   | 1    | 5      |
-      | draft.md | NAS001 | excellent  | 4    | 5      |
-      | draft.md | NAS003 | serves as  | 4    | 25     |
+      | draft.txt | STE101 | snapshot   | 1    | 5      |
+      | draft.txt | NAS001 | excellent  | 4    | 5      |
+      | draft.txt | NAS003 | serves as  | 4    | 25     |
     And no remote judge was called

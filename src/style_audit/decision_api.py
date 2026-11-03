@@ -1,11 +1,11 @@
 """Resolve provider settings for LiteLLM Decisions calls."""
 
-from dataclasses import dataclass, field
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import LiteLLMConfig, validate_api_base
 from .models import AuditError
@@ -18,12 +18,13 @@ _OPENROUTER_API_BASE = "https://openrouter.ai/api"
 _OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 
 
-@dataclass(frozen=True)
-class DecisionAPISettings:
+class DecisionAPISettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
     api_base: str
     model: str
     custom_llm_provider: str
-    api_key: str = field(repr=False)
+    api_key: str = Field(repr=False, exclude=True)
     timeout: float | None = None
 
 
