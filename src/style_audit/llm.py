@@ -216,8 +216,8 @@ def _answer_field(answer: Any, field: str) -> Any:
 def _parse_decision_answers(response: Any, rules: tuple[Rule, ...]) -> dict[str, float]:
     answers = _answer_field(response, "answers")
     expected = {rule.code for rule in rules}
-    if not isinstance(answers, list) or len(answers) != len(expected):
-        raise AuditError("LiteLLM returned a malformed Decisions answer list")
+    if not isinstance(answers, (list, tuple)) or len(answers) != len(expected):
+        raise AuditError("LiteLLM returned malformed Decisions answers")
 
     probabilities: dict[str, float] = {}
     for index, answer in enumerate(answers, start=1):

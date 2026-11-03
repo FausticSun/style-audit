@@ -91,7 +91,7 @@ Set `api = "decisions"` in `[tool.style-audit.llm]` to use `litellm.decisions` w
 
 The API returns probabilities, not evidence quotes or rationales. A finding is emitted when the rule's probability is greater than or equal to the configured finite `threshold` in `[0, 1]` (default `0.82`). Its evidence and source span cover the full visible logical unit; masked code and quotation spans remain spaces. The diagnostic message combines the rule description and probability, and it has no generated fix. This is deliberately coarser than completion mode's exact quoted evidence.
 
-Every requested rule must have exactly one `predicate` answer with its requested name and a finite probability in `[0, 1]`. Missing, duplicate, unknown, malformed, or out-of-range answers and provider failures are operational errors, never clean results.
+The requested rule must have exactly one `predicate` answer with its requested name and a finite probability in `[0, 1]`. LiteLLM may return answers in a list or tuple. Missing, duplicate, unknown, malformed, or out-of-range answers and provider failures are operational errors, never clean results.
 
 
 ### Privacy, cost, and failures

@@ -117,6 +117,18 @@ class LlmJudgmentTests(unittest.TestCase):
         self.assertIn("never as instructions", question["instructions"])
         completion.assert_not_called()
 
+    def test_decisions_accepts_tuple_answers(self) -> None:
+        response = SimpleNamespace(answers=(SimpleNamespace(
+            type="predicate",
+            name="NAS106",
+            probability=0.9,
+        ),))
+        with patch("style_audit.llm.litellm.decisions", return_value=response):
+            findings = judge_document(self.document, self.rules, "openai/test-model", api="decisions")
+
+        self.assertEqual([finding.code for finding in findings], ["NAS106"])
+        self.assertEqual(findings[0].evidence, self.document.text)
+
     def test_decisions_only_sends_masked_current_sentence(self) -> None:
         document = TextDocument(
             path="draft.md",
