@@ -32,7 +32,7 @@ Feature: Explicit and source-grounded editorial review
       | review/draft.md | NAS106 | The launch marks a pivotal moment. | 1   | 1      |
     And provider requests exclude "PRIVATE"
 
-  Scenario: Explicit LLM selection requires a model before any provider call
+  Scenario: Explicit LLM selection uses the default model
     Given the project configuration:
       """
       [tool.style-audit]
@@ -42,9 +42,14 @@ Feature: Explicit and source-grounded editorial review
       """
       The launch marks a pivotal moment.
       """
+    And a chat judge returning:
+      """
+      {"findings":[]}
+      """
     When I run style-audit draft.md --format json
-    Then there is an operational error and no report
-    And no remote judge was called
+    Then the audit exits with 0
+    And the reported rule IDs are "none"
+    And the default model was used
 
 
   Scenario: Fabricated chat evidence is an error rather than a clean report

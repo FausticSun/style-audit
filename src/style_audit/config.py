@@ -30,6 +30,8 @@ DEFAULT_EXCLUDE = (
 
 DEFAULT_MARKDOWN_SELECT = ("NAS", "RDL")
 
+DEFAULT_LLM_MODEL = "openrouter/openrouter/free"
+
 
 def validate_api_base(value: object) -> str:
     if not isinstance(value, str) or not value.strip():
@@ -141,11 +143,18 @@ class AuditConfig(BaseModel):
     ste_allowed_words: tuple[str, ...] = ()
     ste_disallowed_words: tuple[str, ...] = ()
 
-    @model_validator(mode="after")
-    def require_model_for_enabled_judging(self) -> "AuditConfig":
-        if self.llm_enabled and self.llm_model is None:
-            raise ValueError("[tool.style-audit.llm].model is required when LLM judging is enabled")
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def default_completion_model(cls, values: object) -> object:
+        if not isinstance(values, dict):
+            return values
+        normalized = dict(values)
+        if (
+            normalized.get("llm_api", "completion") == "completion"
+            and normalized.get("llm_model") is None
+        ):
+            normalized["llm_model"] = DEFAULT_LLM_MODEL
+        return normalized
 
 
 def _string_list(value: object, name: str, default: tuple[str, ...], *, section: str) -> tuple[str, ...]:
@@ -227,9 +236,7 @@ class _LLMSettings(BaseModel):
         raise ValueError("[tool.style-audit.llm.litellm] must be a table")
 
     @model_validator(mode="after")
-    def require_model_when_enabled(self) -> "_LLMSettings":
-        if self.enabled and self.model is None:
-            raise ValueError("[tool.style-audit.llm].model is required when LLM judging is enabled")
+    def validate_api_settings(self) -> "_LLMSettings":
         if self.api == "decisions" and self.litellm.temperature != 0:
             raise ValueError("[tool.style-audit.llm.litellm].temperature applies only to completion judging")
         return self

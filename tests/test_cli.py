@@ -142,12 +142,31 @@ class ConfigTests(unittest.TestCase):
             config.write_text("[tool.style-audit\n", encoding="utf-8")
             with self.assertRaisesRegex(AuditError, "cannot load configuration"):
                 load_config(project)
-            config.write_text("[tool.style-audit.llm]\nenabled = true\n", encoding="utf-8")
-            with self.assertRaisesRegex(AuditError, "model is required"):
+            config.write_text(
+                '[tool.style-audit.llm]\nenabled = true\nmodel = ""\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(AuditError, "model must be a non-empty string"):
                 load_config(project)
             config.write_text('[tool.style-audit]\ninclude = "*.md"\n', encoding="utf-8")
             with self.assertRaisesRegex(AuditError, "include must be an array"):
                 load_config(project)
+
+    def test_default_model_is_present_but_does_not_enable_remote_judging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary)
+            config = load_config(project)
+            self.assertEqual(config.llm_model, "openrouter/openrouter/free")
+            self.assertFalse(config.llm_enabled)
+            self.assertEqual(config.llm_api, "completion")
+
+            (project / "pyproject.toml").write_text(
+                "[tool.style-audit.llm]\nenabled = true\n",
+                encoding="utf-8",
+            )
+            configured = load_config(project)
+            self.assertEqual(configured.llm_model, "openrouter/openrouter/free")
+            self.assertTrue(configured.llm_enabled)
 
     def test_rule_word_lists_parse_and_reject_non_arrays(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -552,8 +571,14 @@ class CliTests(unittest.TestCase):
                 run(args, cwd=root)
 
             args = _parse_options(["-", "--select", "NAS101"])
-            with self.assertRaisesRegex(AuditError, "requires an explicit model"):
-                run(args, "Some prose.", root)
+            response = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"findings":[]}'))],
+            )
+            with patch("style_audit.llm.litellm.completion", return_value=response) as provider:
+                code, output = run(args, "Some prose.", root)
+            self.assertEqual((code, output), (0, ""))
+            provider.assert_called_once()
+            self.assertEqual(provider.call_args.kwargs["model"], "openrouter/openrouter/free")
 
             args = _parse_options(["-", "--select", "NAS001"])
             code, _ = run(args, "The robust parser.", root)
@@ -1118,7 +1143,7 @@ class CliTests(unittest.TestCase):
                     self.assertEqual(stdout.getvalue(), "")
                     self.assertRegex(stderr.getvalue(), "per-file-select|unknown rule selector")
 
-    def test_matching_per_file_llm_rules_fail_before_partial_json_without_a_model(self) -> None:
+    def test_matching_per_file_llm_rules_use_default_model_and_keep_other_files_local(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text(
@@ -1127,13 +1152,21 @@ class CliTests(unittest.TestCase):
             )
             (root / "a-local.md").write_text("A robust local report.\n", encoding="utf-8")
             (root / "z-review.md").write_text("The release marks a pivotal moment.\n", encoding="utf-8")
-            with patch("style_audit.llm.litellm.completion", side_effect=AssertionError("Missing model started a provider")) as chat:
+            response = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"findings":[]}'))],
+            )
+            with patch("style_audit.llm.litellm.completion", return_value=response) as chat:
                 with patch("sys.stdout", new_callable=StringIO) as stdout, patch("sys.stderr", new_callable=StringIO) as stderr:
                     code = main([str(root), "--config", str(root / "pyproject.toml")])
-            self.assertEqual(code, 2)
-            self.assertEqual(stdout.getvalue(), "")
-            self.assertIn("requires an explicit model", stderr.getvalue())
-            chat.assert_not_called()
+            self.assertEqual(code, 1)
+            report = json.loads(stdout.getvalue())
+            self.assertEqual([(item["path"], item["code"]) for item in report["findings"]], [(str(root / "a-local.md"), "NAS001")])
+            self.assertEqual(stderr.getvalue(), "")
+            chat.assert_called_once()
+            self.assertEqual(chat.call_args.kwargs["model"], "openrouter/openrouter/free")
+            request = json.dumps(chat.call_args.kwargs["messages"])
+            self.assertIn("The release marks a pivotal moment.", request)
+            self.assertNotIn("A robust local report.", request)
 
 
 if __name__ == "__main__":

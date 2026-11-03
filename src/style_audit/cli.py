@@ -174,7 +174,10 @@ def build_cli() -> click.Command:
         help="output format (default: project setting or text)",
     )
     @click.option("--llm", is_flag=True, help="explicitly enable LLM judgments")
-    @click.option("--model", help="LiteLLM model for enabled editorial judgments")
+    @click.option(
+        "--model",
+        help="LiteLLM model for judging (completion default: openrouter/openrouter/free; required for Decisions)",
+    )
     @click.option(
         "--stdin-filename",
         default="<stdin>",
@@ -269,7 +272,7 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
         )
         document_model = model
         if use_llm and document_model is None:
-            raise AuditError("LLM judging requires an explicit model; configure [tool.style-audit.llm].model or pass --model")
+            raise AuditError("LLM judging requires a model; configure [tool.style-audit.llm].model or pass --model")
         rule_plans[document.path] = deterministic_rules, llm_rules if use_llm else (), document_model
 
     findings: list[Diagnostic] = []

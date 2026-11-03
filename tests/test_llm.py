@@ -168,12 +168,13 @@ class LlmJudgmentTests(unittest.TestCase):
             with self.assertRaisesRegex(AuditError, "LiteLLM Decisions provider call failed"):
                 judge_document(self.document, self.rules, "openai/test-model", api="decisions")
 
-    def test_pyproject_selects_provider_neutral_decisions_api_and_threshold(self) -> None:
+    def test_pyproject_uses_explicit_model_for_openrouter_decisions_and_threshold(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text(
                 "[tool.style-audit]\nselect = ['NAS106']\noutput = 'json'\n"
-                "[tool.style-audit.llm]\nenabled = true\nmodel = 'openai/test-model'\n"
+                "[tool.style-audit.llm]\nenabled = true\n"
+                "model = 'openrouter/typesafe/jev-1.14'\n"
                 "api = 'decisions'\nthreshold = 0.82\n",
                 encoding="utf-8",
             )
@@ -195,7 +196,55 @@ class LlmJudgmentTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         finding, = json.loads(output)["findings"]
         self.assertEqual((finding["code"], finding["line"], finding["column"]), ("NAS106", 1, 1))
-        self.assertEqual(decisions.call_args.kwargs["model"], "openai/test-model")
+        self.assertEqual(decisions.call_args.kwargs["model"], "openrouter/typesafe/jev-1.14")
+
+    def test_decisions_require_model_unless_cli_supplies_one(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text(
+                "[tool.style-audit]\nselect = ['NAS106']\noutput = 'json'\n"
+                "[tool.style-audit.llm]\nenabled = true\napi = 'decisions'\n",
+                encoding="utf-8",
+            )
+            draft = root / "draft.md"
+            draft.write_text(self.document.text, encoding="utf-8")
+            args = CLIOptions(
+                paths=(str(draft),),
+                config=None,
+                select=(),
+                ignore=(),
+                format=None,
+                llm=False,
+                model=None,
+                stdin_filename="<stdin>",
+            )
+
+            self.assertIsNone(load_config(root).llm_model)
+            with patch("style_audit.llm.litellm.decisions") as decisions:
+                with self.assertRaisesRegex(AuditError, "LLM judging requires a model"):
+                    run(args, cwd=root)
+                decisions.assert_not_called()
+
+            args = CLIOptions(
+                paths=(str(draft),),
+                config=None,
+                select=(),
+                ignore=(),
+                format=None,
+                llm=False,
+                model="openrouter/typesafe/jev-1.14",
+                stdin_filename="<stdin>",
+            )
+            with patch(
+                "style_audit.llm.litellm.decisions",
+                return_value=self._decision_response(0.82),
+            ) as decisions:
+                exit_code, output = run(args, cwd=root)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(len(json.loads(output)["findings"]), 1)
+        decisions.assert_called_once()
+        self.assertEqual(decisions.call_args.kwargs["model"], "openrouter/typesafe/jev-1.14")
 
     def test_invalid_decisions_configuration_is_rejected_from_pyproject(self) -> None:
         configurations = (

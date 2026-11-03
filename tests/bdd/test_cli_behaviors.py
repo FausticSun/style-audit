@@ -88,6 +88,11 @@ def check_rule_ids(audit_result, rules):
     assert [finding["code"] for finding in json.loads(audit_result.stdout)["findings"]] == expected
     assert audit_result.stderr == ""
 
+@then("the default model was used")
+def check_default_model(providers):
+    providers["chat"].assert_called_once()
+    assert providers["chat"].call_args.kwargs["model"] == "openrouter/openrouter/free"
+
 
 @then("there is an operational error and no report")
 def check_operational_error(audit_result):
