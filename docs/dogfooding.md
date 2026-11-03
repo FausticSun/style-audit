@@ -87,7 +87,7 @@ uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/hooks.py
 
 Check both sides of the pipeline. A renderer failure is not a clean catalog audit. An empty input can produce a successful linter result. The Bash setting above also makes a failed renderer fail the pipeline.
 
-If metadata needs revision, update the source catalog (`rules.py` or `ste_rules.py`), not the generated HTML or a page's source placeholder. Keep criteria, source citations, context, and exceptions accurate. Do not remove a rule or its scope to silence a finding. Every rule has a before/after pair and an explanation in its required `examples` metadata.
+If metadata needs revision, update the appropriate YAML file under `src/style_audit/rules/`, not generated HTML or a page's source placeholder. Keep criteria, source citations, context, and exceptions accurate. Do not remove a rule or its scope to silence a finding. Every rule has a before/after pair and an explanation in its required `examples` metadata.
 
 ### Exercise raw rule examples
 

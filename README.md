@@ -14,7 +14,7 @@ Marimo is optional: `uv sync --extra marimo` installs it for running the interac
 
 ## Documentation
 
-The full user and developer guide starts at [docs/index.md](docs/index.md). It covers installation, CLI behavior, `pyproject.toml`, the generated rule reference, LiteLLM privacy, and contribution workflows. The runtime rule catalog in `src/style_audit/rules.py` is the source of truth.
+The full user and developer guide starts at [docs/index.md](docs/index.md). It covers installation, CLI behavior, `pyproject.toml`, the generated rule reference, LiteLLM privacy, and contribution workflows. The packaged `src/style_audit/rules/` directory contains one canonical YAML catalog per ruleset; `rule_catalog.py` validates each file, and `src/style_audit/rules/__init__.py` exposes the runtime registry.
 
 The [dogfooding guide](docs/dogfooding.md) covers this README, source documentation, generated rule descriptions, Python docstrings, and the Marimo system-design report.
 
@@ -54,7 +54,7 @@ Marimo `.py` apps are parsed, not executed. When the source imports Marimo and c
 
 ## Rules and configuration
 
-Rule metadata lives in `src/style_audit/rules.py`, with the source-located ASD-STE100 entries in `src/style_audit/ste_rules.py`. MkDocs renders [one reference page per ruleset](docs/reference/rules.md), with each rule's metadata, examples, and contextual explanation. `NAS` selects no-ai-slop, `RDL` selects the paper-backed readability rules, and `STE` selects all 53 Issue 9 Part 1 writing rules plus eight general recommendations. The supplied Issue 9 PDF also contains Part 2's controlled dictionary, but the rule catalog does not parse those entries or verify vocabulary approval. `STE606` and `STE801` are local checks, while the other STE entries require contextual LLM review. See the [STE reference](docs/reference/technical-english.md), configuration and [dogfooding workflow](docs/dogfooding.md#audit-the-generated-rule-catalog).
+Rule metadata lives in three packaged files under `src/style_audit/rules/`: `no-ai-slop.yaml` (`NAS`), `readability.yaml` (`RDL`), and `technical-english.yaml` (`STE`). LLM entries use a rule-specific `prompt` and canonical `scope`; deterministic entries declare regex detectors in YAML, with a typed sentence-count detector where regex would be inaccurate. MkDocs renders [one reference page per ruleset](docs/reference/rules.md), with each rule's metadata, examples, and contextual explanation. `NAS` selects no-ai-slop, `RDL` selects the paper-backed readability rules, and `STE` selects all 53 Issue 9 Part 1 writing rules plus eight general recommendations. The supplied Issue 9 PDF also contains Part 2's controlled dictionary, but the rule catalog does not parse those entries or verify vocabulary approval. See the [STE reference](docs/reference/technical-english.md), configuration and [dogfooding workflow](docs/dogfooding.md#audit-the-generated-rule-catalog).
 
 Minimal project configuration:
 

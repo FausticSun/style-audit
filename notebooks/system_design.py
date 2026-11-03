@@ -94,7 +94,7 @@ def _(mo):
         {"Layer": "Configuration", "Modules": "config.py", "Contract": "Discover and validate [tool.style-audit]; hold global/per-file selectors, local vocabularies, LLM opt-in, thresholds, and transport settings."},
         {"Layer": "Input adapters", "Modules": "docstrings.py, marimo_docs.py, gherkin.py", "Contract": "Extract Python docstrings and Marimo Markdown without executing code; mask Gherkin syntax and fixtures without running scenarios."},
         {"Layer": "Text model", "Modules": "text.py", "Contract": "Represent visible prose, masks, source maps, logical units, spans, and original-source evidence."},
-        {"Layer": "Policy", "Modules": "rules.py, ste_rules.py", "Contract": "Canonical NAS, RDL, and STE rule metadata, scope, source citations, and examples."},
+        {"Layer": "Policy", "Modules": "rules/no-ai-slop.yaml, rules/readability.yaml, rules/technical-english.yaml, rule_catalog.py, rules/__init__.py", "Contract": "Canonical validated ruleset YAML metadata, prompts, detectors, scope, source citations, and examples."},
         {"Layer": "Execution", "Modules": "deterministic.py, llm.py, decision_api.py", "Contract": "Run selected local checks; call LiteLLM chat or Decisions judging by scope; validate provider responses."},
         {"Layer": "Output", "Modules": "models.py, reporting.py", "Contract": "Carry immutable Rule/Diagnostic values; sort findings; render versioned JSON or text."},
     ]
@@ -248,7 +248,7 @@ def _(mo):
     uv run marimo export html notebooks/system_design.py -o /tmp/style-audit-system-design.html
     ```
 
-    **Implementation references:** `src/style_audit/cli.py`, `config.py`, `docstrings.py`, `marimo_docs.py`, `gherkin.py`, `text.py`, `rules.py`, `ste_rules.py`, `deterministic.py`, `llm.py`, `decision_api.py`, `models.py`, and `reporting.py`. The checked-in [architecture guide](../docs/architecture.md) records the package contracts.
+    **Implementation references:** `src/style_audit/cli.py`, `config.py`, `docstrings.py`, `marimo_docs.py`, `gherkin.py`, `text.py`, `rules/no-ai-slop.yaml`, `rules/readability.yaml`, `rules/technical-english.yaml`, `rule_catalog.py`, `src/style_audit/rules/__init__.py`, `deterministic.py`, `llm.py`, `decision_api.py`, `models.py`, and `reporting.py`. The checked-in [architecture guide](../docs/architecture.md) records the package contracts.
     """)
     return
 
