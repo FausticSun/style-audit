@@ -26,14 +26,18 @@ def _rule(
     """Build one user-visible rule with a pinpoint citation and original example."""
     recommendation = " This is a recommendation, not a mandatory rule." if citation.startswith("GR-") else ""
     return Rule(
-        code,
-        name,
-        engine,
-        f"ASD-STE100 Issue 9, Part 1, {citation} (page {page}). "
+        code=code,
+        name=name,
+        engine=engine,
+        description=f"ASD-STE100 Issue 9, Part 1, {citation} (page {page}). "
         f"{description}{recommendation}{_LIMIT}",
-        _SOURCE,
-        scope,
-        (RuleExample(before, after, explanation),),
+        source=_SOURCE,
+        scope=scope,
+        examples=(RuleExample(
+            before=before,
+            after=after,
+            explanation=explanation,
+        ),),
     )
 
 

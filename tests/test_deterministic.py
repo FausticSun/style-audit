@@ -16,14 +16,20 @@ class DeterministicRuleTests(unittest.TestCase):
             "```text\nrobust\n```\n"
             "Robustness is a different word."
         )
-        findings = analyze_deterministic(TextDocument("draft.md", source))
+        findings = analyze_deterministic(TextDocument(
+            path="draft.md",
+            text=source,
+        ))
         self.assertEqual([(item.code, item.evidence, item.line, item.column) for item in findings], [
             ("NAS001", "robust", 1, 16),
         ])
 
     def test_heading_emoji_and_explicit_weak_phrases_are_located(self) -> None:
         source = "# Notes\n## 🧭 Plan\nThe app serves as a tracker; the team made a decision.\nThe system has the ability to score drafts.\n"
-        findings = analyze_deterministic(TextDocument("guide.md", source))
+        findings = analyze_deterministic(TextDocument(
+            path="guide.md",
+            text=source,
+        ))
         self.assertEqual(
             [(item.code, item.evidence, item.line, item.column) for item in findings],
             [
@@ -36,14 +42,20 @@ class DeterministicRuleTests(unittest.TestCase):
         )
 
     def test_empty_and_quoted_prose_have_no_findings(self) -> None:
-        self.assertEqual(analyze_deterministic(TextDocument("empty.md", "")), [])
+        self.assertEqual(analyze_deterministic(TextDocument(
+            path="empty.md",
+            text="",
+        )), [])
         source = 'The sentence says “delve”, `serves as`, and # 🪴 Example in code:\n'
-        self.assertEqual(analyze_deterministic(TextDocument("quote.md", source)), [])
+        self.assertEqual(analyze_deterministic(TextDocument(
+            path="quote.md",
+            text=source,
+        )), [])
 
     def test_configured_nas_words_override_and_extend_the_banned_list(self) -> None:
         document = TextDocument(
-            "draft.md",
-            "The robust parser works. ROBUSTNESS is a separate term.\nThe excellent parser works.",
+            path="draft.md",
+            text="The robust parser works. ROBUSTNESS is a separate term.\nThe excellent parser works.",
         )
         findings = analyze_deterministic(
             document,
@@ -57,7 +69,10 @@ class DeterministicRuleTests(unittest.TestCase):
         )
 
         denied_overlap = analyze_deterministic(
-            TextDocument("draft.md", "The robust parser works."),
+            TextDocument(
+                path="draft.md",
+                text="The robust parser works.",
+            ),
             (RULES_BY_CODE["NAS001"],),
             nas_allowed_words=("robust",),
             nas_disallowed_words=("ROBUST",),
@@ -77,15 +92,18 @@ class DeterministicRuleTests(unittest.TestCase):
             "| Four | This is seven. It is eight. |\n"
         )
         findings = analyze_deterministic(
-            TextDocument("guide.md", table),
+            TextDocument(
+                path="guide.md",
+                text=table,
+            ),
             (RULES_BY_CODE["STE606"],),
         )
         self.assertEqual(findings, [])
 
     def test_configured_ste_disallowed_words_respect_prose_masks(self) -> None:
         document = TextDocument(
-            "technical.md",
-            '“snapshot” and `snapshot` are examples.\nThe snapshot is not approved.\n',
+            path="technical.md",
+            text='“snapshot” and `snapshot` are examples.\nThe snapshot is not approved.\n',
         )
         findings = analyze_deterministic(
             document,

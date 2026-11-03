@@ -6,13 +6,16 @@ import re
 import runpy
 from types import SimpleNamespace
 import unittest
+
 from unittest.mock import patch
+
+from pydantic import BaseModel, ValidationError
 
 from style_audit.deterministic import analyze_deterministic
 from style_audit.llm import judge_document
-from style_audit.models import AuditError
+from style_audit.models import AuditError, Rule
 from style_audit.rules import RULES_BY_CODE
-from style_audit.text import TextDocument, TextUnit
+from style_audit.text import SourceMap, TextDocument, TextUnit
 
 
 class TextScopeTests(unittest.TestCase):
@@ -31,6 +34,45 @@ class TextScopeTests(unittest.TestCase):
                 cursor = end
         return units
 
+    def test_pydantic_models_reject_invalid_values_and_freeze_rule_metadata(self) -> None:
+        with self.assertRaises(ValidationError):
+            TextDocument(
+                path="draft.md",
+                text=42,
+            )
+        with self.assertRaises(ValidationError):
+            Rule(
+                code="NAS999",
+                name="Invalid engine",
+                engine="unknown",
+                description="A test rule.",
+                source="test",
+                scope="sentence",
+                examples=(),
+            )
+
+        rule = RULES_BY_CODE["NAS001"]
+        with self.assertRaises(ValidationError):
+            rule.name = "Changed"
+
+
+    def test_text_records_are_frozen_base_models(self) -> None:
+        source_map = SourceMap(source_text="A.", line_starts=(0,), spans=((0, 1), (1, 2)))
+        document = TextDocument(path="draft.md", text="A.", source_map=source_map)
+        unit = document.units("sentence")[0]
+
+        self.assertIsInstance(document, BaseModel)
+        self.assertIsInstance(source_map, BaseModel)
+        self.assertIsInstance(unit, BaseModel)
+        for record, field_name, value in (
+            (document, "text", "Changed."),
+            (source_map, "source_text", "Changed."),
+            (unit, "start", 1),
+        ):
+            with self.subTest(record=type(record).__name__):
+                with self.assertRaises(ValidationError):
+                    setattr(record, field_name, value)
+
     def test_abbreviations_initials_and_decimals_do_not_end_sentences(self) -> None:
         cases = (
             (
@@ -48,7 +90,10 @@ class TextScopeTests(unittest.TestCase):
         )
         for source, passages in cases:
             with self.subTest(source=source):
-                self.assert_units(TextDocument("draft.md", source), "sentence", passages)
+                self.assert_units(TextDocument(
+                    path="draft.md",
+                    text=source,
+                ), "sentence", passages)
 
     def test_terminal_quoted_punctuation_can_end_a_sentence_without_splitting_inner_examples(self) -> None:
         cases = (
@@ -58,7 +103,10 @@ class TextScopeTests(unittest.TestCase):
         )
         for source, passages in cases:
             with self.subTest(source=source):
-                self.assert_units(TextDocument("draft.md", source), "sentence", passages)
+                self.assert_units(TextDocument(
+                    path="draft.md",
+                    text=source,
+                ), "sentence", passages)
 
     def test_unicode_crlf_soft_wraps_and_unpunctuated_tails_keep_original_offsets(self) -> None:
         source = (
@@ -66,7 +114,10 @@ class TextScopeTests(unittest.TestCase):
             "It ships\r\nnext Tuesday!  \r\n\r\n"
             "Tail fragment\r\n"
         )
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
         units = self.assert_units(document, "sentence", (
             "🌿 Café costs 2.50 euros.",
             "It ships\r\nnext Tuesday!",
@@ -79,7 +130,8 @@ class TextScopeTests(unittest.TestCase):
 
     def test_soft_wrapped_sentences_and_deliberate_fragments_are_not_dropped(self) -> None:
         document = TextDocument(
-            "draft.md", "One\nsoftly wrapped thought. Another thought\nwithout final punctuation\n\nWait. Why?\n\nNo answer"
+            path="draft.md",
+            text="One\nsoftly wrapped thought. Another thought\nwithout final punctuation\n\nWait. Why?\n\nNo answer",
         )
         self.assert_units(document, "sentence", (
             "One\nsoftly wrapped thought.",
@@ -92,7 +144,10 @@ class TextScopeTests(unittest.TestCase):
     def test_inline_masks_do_not_fragment_sentences_or_logical_paragraphs(self) -> None:
         first = '"An example." Before `v1.2()` middle “quoted ending!” after.\nStill one paragraph.'
         source = " \t" + first + " \t\n\n“wholly masked”\n\nNext visible paragraph.\n"
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
         self.assert_units(document, "paragraph", (first, "Next visible paragraph."))
         self.assert_units(document, "sentence", (
             '"An example." Before `v1.2()` middle “quoted ending!” after.',
@@ -106,7 +161,10 @@ class TextScopeTests(unittest.TestCase):
             "Lead before code.\n```md\n# Pretend heading\nignored sentence.\n```\n"
             "After code.\n- First item\n  continuing softly.\n- Second item.\n\nLast paragraph."
         )
-        self.assert_units(TextDocument("draft.md", source), "paragraph", (
+        self.assert_units(TextDocument(
+            path="draft.md",
+            text=source,
+        ), "paragraph", (
             "Preamble wrapped\nonto another line.",
             "Lead before code.",
             "After code.",
@@ -117,7 +175,8 @@ class TextScopeTests(unittest.TestCase):
 
     def test_atx_and_setext_headings_are_standalone_paragraph_and_sentence_units(self) -> None:
         document = TextDocument(
-            "draft.md", "Preamble.\r\n# Heading\r\nBody sentence.\r\n\r\nSetext title\r\n====\r\nLast sentence.\r\n"
+            path="draft.md",
+            text="Preamble.\r\n# Heading\r\nBody sentence.\r\n\r\nSetext title\r\n====\r\nLast sentence.\r\n",
         )
         passages = ("Preamble.", "# Heading", "Body sentence.", "Setext title\r\n====", "Last sentence.")
         for scope in ("paragraph", "sentence"):
@@ -133,7 +192,10 @@ class TextScopeTests(unittest.TestCase):
             "# Final\nFinal body.",
         )
         source = " \t" + "\n\n".join(sections) + "\n"
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
         units = self.assert_units(document, "section", sections)
         self.assertTrue(all(left.end <= right.start for left, right in zip(units, units[1:])))
         self.assertEqual(sum("Child body." in source[unit.start:unit.end] for unit in units), 1)
@@ -141,12 +203,18 @@ class TextScopeTests(unittest.TestCase):
 
     def test_quoted_and_inline_code_headings_do_not_split_sections(self) -> None:
         preamble = 'Preamble.\n"# Quoted heading"\n`## Code heading`\nStill preamble.'
-        document = TextDocument("draft.md", preamble + "\n\n# Real heading\nActual body.")
+        document = TextDocument(
+            path="draft.md",
+            text=preamble + "\n\n# Real heading\nActual body.",
+        )
         self.assert_units(document, "section", (preamble, "# Real heading\nActual body."))
 
     def test_headingless_section_and_document_aggregate_all_original_context(self) -> None:
         body = 'First paragraph.\n\n"An example."\n\nSecond paragraph.\n```txt\nmasked\n```\nLast paragraph.'
-        document = TextDocument("draft.md", " \t" + body + "\r\n ")
+        document = TextDocument(
+            path="draft.md",
+            text=" \t" + body + "\r\n ",
+        )
         self.assert_units(document, "section", (body,))
         self.assert_units(document, "document", (body,))
 
@@ -154,7 +222,10 @@ class TextScopeTests(unittest.TestCase):
         for source in ("", " \t\r\n", '"quoted"\n\n`code`', "```md\n# Header\nBody.\n```\n"):
             for scope in ("sentence", "paragraph", "section", "document"):
                 with self.subTest(source=source, scope=scope):
-                    self.assertEqual(TextDocument("draft.md", source).units(scope), ())
+                    self.assertEqual(TextDocument(
+                        path="draft.md",
+                        text=source,
+                    ).units(scope), ())
 
 
 class ScopedJudgmentTests(unittest.TestCase):
@@ -236,7 +307,10 @@ class ScopedJudgmentTests(unittest.TestCase):
             "## Results\r\nEach batch took ten seconds.\r\n\r\n"
             "# More results\r\nEach build took ten seconds.\r\n"
         )
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
 
         def evaluate(code, text, scope):
             if code == "NAS101" and "not a speed upgrade" in text and "safety upgrade" in text:
@@ -273,7 +347,10 @@ class ScopedJudgmentTests(unittest.TestCase):
             "# Parent\nQueueKit, the scheduler, dispatched the job.\n\n"
             "## Child\nQueueKit, the dispatcher, retried the same job."
         )
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
 
         def evaluate(code, text, scope):
             if code == "NAS101" and "not a speed upgrade" in text and "safety upgrade" in text:
@@ -288,7 +365,10 @@ class ScopedJudgmentTests(unittest.TestCase):
 
     def test_inline_masks_preserve_paragraph_context_without_becoming_judged_evidence(self) -> None:
         paragraph = 'This is not a speed upgrade.\n`upgrade()`\n“Quoted example.”\nIt is a safety upgrade.'
-        document = TextDocument("draft.md", " \t" + paragraph + "\n")
+        document = TextDocument(
+            path="draft.md",
+            text=" \t" + paragraph + "\n",
+        )
 
         def evaluate(code, text, scope):
             if "not a speed upgrade" in text and "safety upgrade" in text:
@@ -300,13 +380,19 @@ class ScopedJudgmentTests(unittest.TestCase):
                 findings = self.judge_with_fixture(document, ("NAS101",), backend, evaluate)
                 evidence = paragraph if backend == "decision" else "It is a safety upgrade."
                 self.assert_finding_spans(document, findings, [("NAS101", evidence)])
-                masked_context = TextDocument("draft.md", 'This is not a speed upgrade. "It is a safety upgrade."')
+                masked_context = TextDocument(
+                    path="draft.md",
+                    text='This is not a speed upgrade. "It is a safety upgrade."',
+                )
                 self.assertEqual(self.judge_with_fixture(masked_context, ("NAS101",), backend, evaluate), [])
 
     def test_repeated_unicode_evidence_is_anchored_to_each_current_sentence(self) -> None:
         sentence = "🌿 Café marks a pivotal moment."
         source = " \t" + sentence + "\r\n\r\nNo claim here.\r\n\r\n  " + sentence + "\r\n"
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
 
         def evaluate(code, text, scope):
             return "marks a pivotal moment" if "marks a pivotal moment" in text else None
@@ -318,7 +404,10 @@ class ScopedJudgmentTests(unittest.TestCase):
                 self.assert_finding_spans(document, findings, [("NAS106", evidence), ("NAS106", evidence)])
 
     def test_chat_cannot_cite_visible_evidence_from_another_sentence(self) -> None:
-        document = TextDocument("draft.md", "The release marks a pivotal moment.\nThe second sentence only describes its date.")
+        document = TextDocument(
+            path="draft.md",
+            text="The release marks a pivotal moment.\nThe second sentence only describes its date.",
+        )
 
         def evaluate(code, text, scope):
             if "only describes its date" in text:
@@ -329,7 +418,10 @@ class ScopedJudgmentTests(unittest.TestCase):
             self.judge_with_fixture(document, ("NAS106",), "chat", evaluate)
 
     def test_selected_rules_cannot_answer_for_another_scope(self) -> None:
-        document = TextDocument("draft.md", "This is not a speed upgrade. It is a safety upgrade.")
+        document = TextDocument(
+            path="draft.md",
+            text="This is not a speed upgrade. It is a safety upgrade.",
+        )
         rules = (RULES_BY_CODE["NAS101"], RULES_BY_CODE["NAS106"])
 
         def decision_provider(*, state, questions, **kwargs):
@@ -359,7 +451,10 @@ class ScopedJudgmentTests(unittest.TestCase):
 class ScopedDeterministicTests(unittest.TestCase):
     def test_selected_rule_keeps_token_locations_and_excludes_other_deterministic_rules(self) -> None:
         source = "  ## 🧭 Plan\r\nÉlodie has the ability to ship a robust parser.\r\n"
-        document = TextDocument("draft.md", source)
+        document = TextDocument(
+            path="draft.md",
+            text=source,
+        )
         expected = {
             "NAS001": [("NAS001", "robust", 2, 34)],
             "NAS002": [("NAS002", "🧭", 1, 6)],
@@ -373,7 +468,10 @@ class ScopedDeterministicTests(unittest.TestCase):
 
     def test_heading_rule_covers_nested_and_setext_headings_once_but_not_fenced_examples(self) -> None:
         source = "  # 🌿 Parent\n  ## 🧭 Child\nBody.\n\n  🪴 Sibling\n---\nOther body.\n```md\n# 🚀 Example\n```\n"
-        findings = analyze_deterministic(TextDocument("draft.md", source), (RULES_BY_CODE["NAS002"],))
+        findings = analyze_deterministic(TextDocument(
+            path="draft.md",
+            text=source,
+        ), (RULES_BY_CODE["NAS002"],))
         self.assertEqual(
             [(item.evidence, item.line, item.column) for item in findings],
             [("🌿", 1, 5), ("🧭", 2, 6), ("🪴", 5, 3)],
@@ -383,7 +481,10 @@ class ScopedDeterministicTests(unittest.TestCase):
         hooks = runpy.run_path(str(Path(__file__).resolve().parents[1] / "docs" / "hooks.py"))
         sample = "# 🚀 Example\n```text\nWe utilize samples.\n```\n````text\nThis serves as a demo.\n````\n~~~~~text\nWe delve into details.\n~~~~~\nA robust example."
         rendered = hooks["_sample"](sample)
-        document = TextDocument("rules.md", rendered + "\n\nWe utilize the parser.")
+        document = TextDocument(
+            path="rules.md",
+            text=rendered + "\n\nWe utilize the parser.",
+        )
         findings = analyze_deterministic(document)
         self.assertEqual(
             [(item.code, item.evidence, item.line, item.column) for item in findings],

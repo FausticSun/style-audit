@@ -45,8 +45,8 @@ def document_from_feature(path: str, source: str) -> TextDocument:
         offset = line_end
 
     return TextDocument(
-        path,
-        source,
+        path=path,
+        text=source,
         mask_spans=tuple(masks),
         paragraph_breaks=tuple(paragraph_breaks),
         section_breaks=tuple(section_breaks),

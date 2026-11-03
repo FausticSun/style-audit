@@ -1,6 +1,6 @@
 # Project configuration
 
-The CLI reads `[tool.style-audit]` from the nearest `pyproject.toml` found by walking upward from the **current working directory**. It does not search from each input path. `--config PATH` bypasses discovery. `PATH` may be a TOML file or a directory containing `pyproject.toml`. Invalid TOML and invalid setting types fail with exit status `2`.
+The CLI reads `[tool.style-audit]` from the nearest `pyproject.toml` found by walking upward from the **current working directory**. It does not search from each input path. `--config PATH` bypasses discovery. `PATH` may be a TOML file or a directory containing `pyproject.toml`. Pydantic validates configuration values; invalid TOML, invalid setting types, and unsupported LiteLLM transport settings fail with exit status `2`.
 
 ## Settings
 
@@ -20,8 +20,8 @@ threshold = 0.8
 
 All settings are optional. Directory scanning defaults to `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Ordinary Python files audit docstrings; recognized Marimo `.py` apps audit direct Markdown cell literals.
 `.feature` files receive a syntax-aware Gherkin pass that does not execute steps or load step definitions. It masks Gherkin keyword prefixes and full-line tags, comments, table rows, and docstring fixtures while keeping heading descriptions and step prose auditable. Explicit file paths bypass `include` filtering.
-
-Includes and excludes are arrays of non-empty strings. Path matching uses Python filename-glob matching. A bare excluded directory name matches that component at any depth, and glob patterns can exclude directory subtrees. Supplying an `include` or `exclude` array replaces that default list. Restate the defaults you still need. `output` is `text` or `json`.
+Directory scans exclude `AGENTS.md` and `SKILL.md` at any depth by default. Includes and excludes are arrays of non-empty strings; a bare excluded directory name matches that component at any depth, and glob patterns can exclude directory subtrees.
+Supplying an `include` or `exclude` array replaces the corresponding default list. Restate the defaults you still need, including these file exclusions. `output` is `text` or `json`.
 
 Use `include = ["*.py", "*.pyi"]` to scan Python source only. Ordinary files contribute docstrings; recognized Marimo apps contribute direct Markdown cell literals. Use `include = ["*.md", "*.markdown", "*.rst", "*.txt", "*.feature"]` for prose files and Gherkin without Python source. Existing LLM opt-ins also apply to unmasked Gherkin prose and extracted Python prose. Narrow includes if those inputs must not be reviewed remotely. See [Python inputs](reference/cli.md#python-docstrings) and [Gherkin feature files](reference/cli.md#gherkin-feature-files).
 
@@ -29,17 +29,17 @@ The `llm` table accepts:
 
 | Setting | Type and default | Effect |
 | --- | --- | --- |
-| `enabled` | Boolean, default `false` | Opt into judging selected LLM rules. |
-| `model` | Non-empty string, no default model | Select the OpenRouter Microsoft Decision-1 model, an `azure-maas-judge/<model-id>` Decisions model, or a LiteLLM chat model. |
+| `enabled` | Boolean, default `false` | Opts selected LLM rules into judging; it never adds rules to the effective selection. |
+| `model` | Optional non-empty string, no default | Required for LLM judging. A configured model alone does not enable global judging. |
 | `threshold` | Finite number in `[0, 1]`, default `0.8` | Emit decision findings when probability is greater than or equal to this value. |
 
 Use `azure-maas-judge/Decision-1` for Azure MaaS Decisions judging. The public selector syntax is `azure-maas-judge/<model-id>`. The OMP registry supplies defaults for its base URL and API key, while `[tool.style-audit.llm.litellm]` can override LiteLLM settings as described below. The registry's `api: openrouter-decisions` selects the Decisions interface, not the OpenRouter service.
 
-Other model names retain the LiteLLM chat backend. For example, `openai/gpt-4o-mini` requires its provider's configuration. Never put raw credentials in project TOML.
+Other model names use LiteLLM chat completions directly. If a Decisions-selected model rejects its first Decisions request as unsupported or unavailable on that endpoint, style-audit switches that model to chat completions; authentication and other failures remain errors. Chat findings do not use the probability threshold. For example, `openai/gpt-4o-mini` requires its provider's configuration. Never put raw credentials in project TOML.
 
 For OpenRouter Microsoft Decision-1, set `OPENROUTER_API_KEY`. LiteLLM's `systemone` adapter sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`; this model does not use chat completions. No OMP registry or custom endpoint is needed. If overriding `api_base`, use the OpenRouter API root (`https://openrouter.ai/api`), not the chat `/api/v1` base.
 
-Enabling LLM review requires an explicit model. A configured model alone does not enable config-driven calls: `enabled` must be true, or an LLM rule must be explicitly selected. Command-line opt-ins are described below. See [LLM review and privacy](llm.md) for request content and backend differences.
+LLM judging is off by default, including when the default Markdown selection contains RDL rules. A configured model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true` (with a model), `--llm` or `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules also opts that file in. See [LLM review and privacy](llm.md) for request content and backend differences.
 
 ### LiteLLM transport settings
 
@@ -92,13 +92,13 @@ Local lexical checks scan visible prose, not masked quotations or code, and appl
 
 ## Selection, ignoring, and LLM opt-in
 
-With no `select`, all registered rules from the `NAS`, `RDL`, and `STE` catalogs are selected. A non-empty `select` array narrows the set. `ignore` removes rules from it. Entries may be exact IDs, prefixes, or filename-style globs.
+Without a non-empty `select`, `.md` inputs with no matching per-file entry default to the `NAS` and `RDL` catalogs; other unmatched inputs retain all registered rules. This changes rule selection only; LLM judging remains opt-in. A non-empty global `select` or matching per-file entry overrides the Markdown default. `ignore` removes rules from the effective selection.
 
 `"NAS"` selects no-ai-slop rules. `"NAS1"` matches `NAS101`–`NAS121`. `"NAS00"` selects `NAS001`–`NAS003`. `"NAS00?"` selects the three local rules. `"NAS00[13]"` selects `NAS001` and `NAS003`.
 
 `"RDL"` selects readability rules. `"STE"` selects all 61 ASD-STE100 rules and recommendations. `"STE606"` selects the local six-sentence paragraph check, and `"STE801"` selects the local semicolon check. Combine them, for example, with `select = ["NAS00", "RDL", "STE606", "STE801"]`.
 
-`*`, `?`, and bracket classes use Python `fnmatchcase` semantics. Entries without glob characters retain prefix matching. Matching is case-sensitive. Selecting LLM rules requires an explicit model and opts into judging.
+`*`, `?`, and bracket classes use Python `fnmatchcase` semantics. Entries without glob characters retain prefix matching. Matching is case-sensitive. Default `.md` selection does not enable remote review or choose a model; LLM rules require explicit opt-in and a model.
 
 Selection does not change a rule's scope. Every deterministic and LLM rule has a canonical sentence, paragraph, section, or document assignment in the generated [rule reference](reference/rules.md). There are no scope overrides in TOML or on the CLI. Both LLM backends group selected rules by that metadata, requesting only the matching-scope rules and masked text of each eligible unit. Selecting additional scopes can increase remote request volume. See [segmentation, privacy, and cost](llm.md#canonical-scopes-and-segmentation).
 
@@ -111,7 +111,7 @@ style-audit --select NAS101 --model azure-maas-judge/Decision-1 --threshold 0.9 
 style-audit --select RDL --model azure-maas-judge/Decision-1 draft.md
 ```
 
-LLM judging requires selected LLM rules **and** an explicit opt-in. The opt-in comes from `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, or explicitly selecting an LLM rule. `--llm` does not broaden `select`: if only deterministic rules are selected, no provider call is made. A command-line model selects the model and opts into judging selected LLM rules. Deterministic-only checks never send text remotely.
+LLM judging remains off by default, including for default `.md` selections. It requires selected LLM rules and an explicit opt-in: `[tool.style-audit.llm].enabled = true` (which requires a configured model), `--llm`, `--model`, or explicitly selecting an LLM rule. A matching per-file entry selecting LLM rules opts that file in. Explicit CLI/model/rule-selection opt-ins still take precedence over `enabled = false`. `--llm` does not broaden `select`; deterministic-only checks never send text remotely.
 
 `AuditConfig` and `load_config()` in `style_audit.config` implement these settings. The parser accepts only the documented setting types. A broken `pyproject.toml` is not silently ignored.
 
@@ -140,8 +140,8 @@ File patterns match case-sensitive, slash-separated paths **relative to the dire
 
 Selection order:
 
-1. Start with global `select`, or all rules when it is absent or empty.
-2. If any per-file patterns match, replace that selection with the **union** of their rule selectors. Declaration order and pattern specificity do not affect the result. An empty matching array selects no rules unless another matching entry contributes rules.
+1. Start with configured global `select` when non-empty. Otherwise, an unmatched `.md` input defaults to `NAS` and `RDL`; other inputs start with all rules.
+2. If per-file patterns match, replace that selection with the **union** of their rule selectors. Declaration order and pattern specificity do not affect the result. An empty matching array selects no rules unless another matching entry contributes rules.
 3. CLI `--select`, when supplied, replaces both global and per-file selection.
 4. Remove global `ignore` and CLI `--ignore`. Ignored rules cannot be re-enabled by a file entry or CLI selection.
 
@@ -149,7 +149,7 @@ File mappings do not change discovery, `include`/`exclude`, or a rule's canonica
 
 Stdin uses `--stdin-filename` for matching. Relative names are resolved from the invocation directory, then made relative to the configuration root. Absolute names also work and need not exist. Unnamed stdin uses `<stdin>` and inherits the global selection unless a pattern matches that name.
 
-A matching entry that explicitly selects LLM rules opts into judging **that file only** and requires a model. It does not enable LLM review of other files merely because their default selection contains LLM rules. Unmatched entries do not require a model.
+A matching per-file entry that selects LLM rules opts that file into judging; other files follow their own selection policy. Unmatched entries do not require a model.
 
 Global `llm.enabled`, `--llm`, and `--model` still opt into any LLM rules retained by each file's effective selection. Use a local global selection such as `NAS00` when other files must stay local. Model requirements are checked for all collected documents before any provider call. See [LLM review and privacy](llm.md).
 

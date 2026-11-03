@@ -1,9 +1,11 @@
 """Text documents retain Unicode character offsets for diagnostics."""
 
 from bisect import bisect_right
-from dataclasses import dataclass, field
-import re
 from functools import cached_property
+import re
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from .models import RuleScope
 
@@ -25,8 +27,11 @@ def _mask_span(chars: list[str], start: int, end: int) -> None:
             chars[index] = " "
 
 
-@dataclass(frozen=True)
-class TextUnit:
+class _FrozenTextModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+
+class TextUnit(_FrozenTextModel):
     """One logical audit target, using original exclusive-end character offsets."""
 
     scope: RuleScope
@@ -34,8 +39,7 @@ class TextUnit:
     end: int
 
 
-@dataclass(frozen=True)
-class SourceMap:
+class SourceMap(_FrozenTextModel):
     """Map decoded prose characters to their original Python source spans."""
 
     source_text: str
@@ -58,20 +62,27 @@ class SourceMap:
         return line_index + 1, offset - self.line_starts[line_index] + 1
 
 
-@dataclass(frozen=True)
-class TextDocument:
+class TextDocument(_FrozenTextModel):
     path: str
     text: str
-    mask_spans: tuple[tuple[int, int], ...] = field(default=(), repr=False)
-    paragraph_breaks: tuple[int, ...] = field(default=(), repr=False)
-    section_breaks: tuple[int, ...] = field(default=(), repr=False)
-    source_map: SourceMap | None = field(default=None, repr=False)
-    line_starts: tuple[int, ...] = field(init=False, repr=False)
-    visible_text: str = field(init=False, repr=False)
-    _code_blocks: tuple[tuple[int, int], ...] = field(init=False, repr=False)
-    _quote_sentence_ends: tuple[int, ...] = field(init=False, repr=False)
+    mask_spans: tuple[tuple[int, int], ...] = Field(default=(), repr=False)
+    paragraph_breaks: tuple[int, ...] = Field(default=(), repr=False)
+    section_breaks: tuple[int, ...] = Field(default=(), repr=False)
+    source_map: SourceMap | None = Field(default=None, repr=False)
+    _line_starts: tuple[int, ...] = PrivateAttr(default=())
+    _visible_text: str = PrivateAttr(default="")
+    _code_blocks: tuple[tuple[int, int], ...] = PrivateAttr(default=())
+    _quote_sentence_ends: tuple[int, ...] = PrivateAttr(default=())
 
-    def __post_init__(self) -> None:
+    @property
+    def line_starts(self) -> tuple[int, ...]:
+        return self._line_starts
+
+    @property
+    def visible_text(self) -> str:
+        return self._visible_text
+
+    def model_post_init(self, context: Any) -> None:
         if self.source_map is not None and len(self.source_map.spans) != len(self.text):
             raise ValueError("source map length does not match document text")
         if any(not 0 <= start <= end <= len(self.text) for start, end in self.mask_spans):
@@ -79,7 +90,7 @@ class TextDocument:
         if any(not 0 <= boundary <= len(self.text) for boundary in (*self.paragraph_breaks, *self.section_breaks)):
             raise ValueError("logical boundary is outside the document")
         starts = (0, *(index + 1 for index, char in enumerate(self.text) if char == "\n"))
-        object.__setattr__(self, "line_starts", starts)
+        self._line_starts = starts
         chars = list(self.text)
         for start, end in self.mask_spans:
             _mask_span(chars, start, end)
@@ -104,7 +115,7 @@ class TextDocument:
                 _mask_span(chars, match.start(), match.end())
         if open_fence is not None:
             code_blocks.append((fence_start, len(self.text)))
-        object.__setattr__(self, "_code_blocks", tuple(code_blocks))
+        self._code_blocks = tuple(code_blocks)
         fenced_text = "".join(chars)
         for match in _INLINE_CODE.finditer(fenced_text):
             _mask_span(chars, match.start(), match.end())
@@ -118,8 +129,8 @@ class TextDocument:
             if code_masked_text[stop - 2] in ".!?" and (cursor == len(code_masked_text) or code_masked_text[cursor].isupper()):
                 quote_sentence_ends.append(stop)
             _mask_span(chars, match.start(), match.end())
-        object.__setattr__(self, "visible_text", "".join(chars))
-        object.__setattr__(self, "_quote_sentence_ends", tuple(quote_sentence_ends))
+        self._visible_text = "".join(chars)
+        self._quote_sentence_ends = tuple(quote_sentence_ends)
 
     @cached_property
     def heading_spans(self) -> tuple[tuple[int, int], ...]:
@@ -202,7 +213,7 @@ class TextDocument:
             spans = (span,) if span is not None else ()
         else:
             raise ValueError(f"unknown audit scope {scope!r}")
-        return tuple(TextUnit(scope, start, end) for start, end in spans)
+        return tuple(TextUnit(scope=scope, start=start, end=end) for start, end in spans)
 
     def position(self, offset: int) -> tuple[int, int]:
         if not 0 <= offset <= len(self.text):

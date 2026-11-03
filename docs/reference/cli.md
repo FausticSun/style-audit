@@ -13,9 +13,9 @@ cat draft.txt | style-audit -      # read standard input
 
 Pass one or more paths. The literal `-` reads stdin once and may be combined with files. `--stdin-filename NAME` sets its diagnostic path. It selects Python extraction for `.py` and `.pyi` (Marimo Markdown cells or ordinary Python docstrings), or Gherkin processing for `.feature`. Other names retain prose input. If no paths are given, `.` is used.
 
-Explicit files need not match the directory include patterns, but they must be UTF-8 text.
+Explicit files need not match the directory include patterns, but they must be UTF-8 text. Default excludes apply during directory discovery; passing a named file explicitly remains an intentional override.
 
-Default directory includes are `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Configured `include` and `exclude` patterns retain their existing matching semantics.
+Default directory includes are `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Directory scans exclude `AGENTS.md` and `SKILL.md` at any depth by default; configured `include` and `exclude` patterns retain their existing matching semantics.
 
 Configuration is discovered by walking upward from the current working directory for `pyproject.toml`. `--config PATH` selects an explicit `pyproject.toml` or a directory containing one. See [configuration](../configuration.md) for path and precedence details.
 
@@ -75,13 +75,13 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 
 IDs, prefixes, and filename-style rule globs are matched case-sensitively. `NAS` selects no-ai-slop rules. `NAS1` selects `NAS101` through `NAS121`. `NAS00` selects `NAS001`–`NAS003`. `RDL` selects readability rules.
 
-CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. An empty global `select` means all three catalogs are selected before ignores. An empty per-file selection disables rules for matching files unless another matching entry adds rules. See [per-file rule selection](../configuration.md#per-file-rule-selection).
+CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. Without a global selection or matching per-file entry, `.md` inputs default to `NAS` and `RDL`; other inputs select all catalogs. An empty per-file selection disables rules for matching files. See [per-file rule selection](../configuration.md#per-file-rule-selection).
 
-Selecting an LLM rule explicitly enables the judge for that file, including through a matching per-file entry. `--llm` and `--model` enable only LLM rules that remain selected for each file. A deterministic-only effective selection does not start remote calls, even with `--llm`. Selecting a model does not add unselected rules. See [LLM review and privacy](../llm.md).
+Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judging. LLM review requires selected LLM rules, a model, and an opt-in through `enabled = true`, explicit LLM selection, `--llm`, or `--model`. Set `OPENROUTER_API_KEY` when using OpenRouter. A deterministic-only effective selection does not start remote calls. See [LLM review and privacy](../llm.md).
 
 `STE` selects all 61 ASD-STE100 entries, including recommendations. `STE606` and `STE801` are the local paragraph-count and semicolon rules. Markdown table blocks are not paragraphs and do not count toward the STE606 six-sentence limit. STE801 still checks semicolons in table cells. Combine selectors with `--select NAS00,RDL,STE606,STE801`, or quote globs such as `--select 'NAS00?'` and `--ignore 'NAS00[23]'`. Every selector must match a registered rule.
 
-Use `openrouter/microsoft/microsoft-decision-1` for OpenRouter Decisions judging. Set `OPENROUTER_API_KEY`; LiteLLM sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`, not chat completions. No custom endpoint configuration is required. The `azure-maas-judge/<model-id>` selector remains available for Azure MaaS Decisions judging through the OMP registry or `[tool.style-audit.llm.litellm]`. Other model names use LiteLLM chat judging. An explicit model is required whenever selected LLM rules are judged. There is no default model.
+To use OpenRouter Microsoft Decision-1, select an LLM rule and opt in with a model such as `openrouter/microsoft/microsoft-decision-1`; set `OPENROUTER_API_KEY`. LiteLLM sends typed judgments to `POST https://openrouter.ai/api/alpha/decisions`, not chat completions. No custom endpoint configuration is required. The `azure-maas-judge/<model-id>` selector remains available for Azure MaaS Decisions judging through the OMP registry or `[tool.style-audit.llm.litellm]`. Other model names use LiteLLM chat judging.
 
 Example:
 

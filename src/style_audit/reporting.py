@@ -1,6 +1,5 @@
 """Deterministic text and JSON diagnostic renderers."""
 
-from dataclasses import asdict
 import json
 from collections.abc import Sequence
 
@@ -23,7 +22,7 @@ def render_text(findings: Sequence[Diagnostic]) -> str:
 
 def render_json(findings: Sequence[Diagnostic]) -> str:
     return json.dumps(
-        {"version": 1, "findings": [asdict(item) for item in sort_diagnostics(findings)]},
+        {"version": 1, "findings": [item.model_dump(mode="json") for item in sort_diagnostics(findings)]},
         ensure_ascii=False,
         indent=2,
     ) + "\n"

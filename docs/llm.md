@@ -1,6 +1,12 @@
 # LLM review and privacy
 
-LLM rules are subjective editorial judgments—not an AI-authorship detector. Local deterministic checks run without a model. No text is sent remotely unless LLM rules are selected and an explicit opt-in enables judging.
+LLM rules are subjective editorial judgments—not an AI-authorship detector. Default `.md` inputs select `NAS` and `RDL`; that selection alone does not activate remote judging. Other inputs remain local unless an LLM opt-in enables judging.
+
+## Default Markdown review
+
+When no global selection or matching per-file selection overrides it, an `.md` input uses `NAS` and `RDL`. This is a rule-selection default only: no model is chosen and no content is sent remotely unless judging is separately enabled. Opt in with `[tool.style-audit.llm].enabled = true` plus a configured model, `--llm` plus a model, `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules opts that file in. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default selection applies only to `.md`, not `.markdown`, `.rst`, `.txt`, Python, or Gherkin inputs.
+
+The default selection alone causes no remote request or charge. Once enabled, review sends visible prose to the configured provider and may incur charges. Masking is not sensitive-data redaction; see [what the request contains](#what-the-request-contains).
 
 ## Opt in
 
@@ -23,7 +29,7 @@ style-audit --select NAS106 --model openrouter/microsoft/microsoft-decision-1 --
 
 [Per-file selections](configuration.md#per-file-rule-selection) can enable editorial rules only for matching paths. A matching entry that explicitly selects an LLM rule opts into that file's review, and the same entry does not enable review of unmatched files.
 
-An explicit model remains required. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
+No model is supplied automatically. LLM judging requires a configured or command-line model. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
 
 Use `openrouter/microsoft/microsoft-decision-1` for Microsoft Decision-1 on OpenRouter. Set `OPENROUTER_API_KEY`; LiteLLM routes the model through `POST https://openrouter.ai/api/alpha/decisions` with its `systemone` adapter, not through chat completions. No OMP registry or custom endpoint is needed. If you set `api_base`, use `https://openrouter.ai/api`.
 
@@ -39,7 +45,7 @@ Other models retain LiteLLM chat-completion judging, using LiteLLM's provider/mo
 style-audit --select NAS106 --model openai/gpt-4o-mini draft.md
 ```
 
-A model in configuration by itself does not enable remote calls. An explicitly selected LLM rule, `--llm`, or a command-line `--model` is an opt-in, and with configured selection only rules that remain selected are eligible. Judging also requires an explicit model, whether configured or passed on the command line. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`. `--threshold` alone does not enable judging.
+A model in configuration by itself does not enable global remote calls. Default `.md` inputs select `NAS` and `RDL`, but that selection does not send text remotely. Judging requires selected LLM rules plus an opt-in through `llm.enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file selection. With configured selection, only retained rules are eligible. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`. `--threshold` alone does not enable judging.
 
 ## What the request contains
 
@@ -82,6 +88,10 @@ Source maps retain original Unicode positions and source spelling through string
 For `azure-maas-judge/<model-id>`, the application passes the selected ID (or the project `decision_model` override) to LiteLLM's `systemone` Decisions API. `api_base` comes from the project setting or OMP `baseUrl`. `custom_llm_provider` comes from the project setting or defaults to `openai`. Style-audit passes it through to LiteLLM without restricting its value. If `api_key_env` is configured, that named environment variable must be set. Otherwise `AZURE_MAAS_JUDGE_API_KEY` overrides the OMP `apiKey`.
 
 LiteLLM selects the route from `custom_llm_provider`: `azure_ai` uses `/providers/microsoft/v1/systemone` for a Foundry project endpoint, while `openai` uses `/openai/v1/decisions` for a base ending `/openai/v1`. The OMP `api: openrouter-decisions` value identifies the Decisions interface but does not route requests through the OpenRouter service. Style-audit passes the configured base URL and key, so the adapter does not use OpenAI's public endpoint. Other model names continue to use LiteLLM chat completions.
+
+If the first Decisions request returns HTTP 404, 405, or 501, or the provider says the model is unsupported or unavailable on the Decisions/systemone endpoint (including OpenRouter's `Model … does not exist` response), style-audit switches the entire audit to LiteLLM chat completions using the same resolved model, provider, credentials, and timeout at that provider's chat endpoint (OpenRouter chat uses `/v1`). This switch happens only before any successful Decisions response, so an error after successful decision judgments remains an operational failure rather than replaying those units. Authentication, quota, timeout, malformed-answer, and other provider failures do not trigger fallback.
+
+Chat fallback returns structured findings without decision probabilities; `threshold` does not filter them. The rejected Decisions request already contains the first unit, so fallback may send that unit to the provider again through chat.
 
 A request through the OpenAI Decisions adapter returned `ServiceUnavailableError` (HTTP `503`). Later Foundry-route requests completed: a document-scoped `NAS113` check on `wages-report/report.md` returned no findings, and the Marimo system-design `NAS,RDL` audit returned three reviewed `NAS117` formatting findings and no `RDL` findings. The separate full `wages-report` NAS/RDL audit remains unrun. See the [dogfooding record](dogfooding.md#observed-marimo-system-design-audit) for the system-design audit scope.
 

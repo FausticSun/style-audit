@@ -1,7 +1,8 @@
 """Shared rule metadata and source-located diagnostics."""
 
-from dataclasses import dataclass
 from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
 
 RuleScope = Literal["sentence", "paragraph", "section", "document"]
 
@@ -10,8 +11,11 @@ class AuditError(Exception):
     """An operational failure, never a successful clean audit."""
 
 
-@dataclass(frozen=True)
-class RuleExample:
+class _FrozenModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+
+class RuleExample(_FrozenModel):
     """An illustrative revision with its intended context and reasoning."""
 
     before: str
@@ -19,8 +23,7 @@ class RuleExample:
     explanation: str
 
 
-@dataclass(frozen=True)
-class Rule:
+class Rule(_FrozenModel):
     code: str
     name: str
     engine: Literal["deterministic", "llm"]
@@ -30,8 +33,7 @@ class Rule:
     examples: tuple[RuleExample, ...]
 
 
-@dataclass(frozen=True)
-class Diagnostic:
+class Diagnostic(_FrozenModel):
     path: str
     code: str
     message: str

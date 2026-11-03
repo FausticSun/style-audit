@@ -97,15 +97,15 @@ def _parse_response(content: Any, document: TextDocument, rules: tuple[Rule, ...
         line, column, end_line, end_column = document.span(start, start + len(evidence))
         diagnostics.append(
             Diagnostic(
-                document.path,
-                code,
-                reason.strip(),
-                line,
-                column,
-                end_line,
-                end_column,
-                document.evidence(start, start + len(evidence)),
-                fix.strip(),
+                path=document.path,
+                code=code,
+                message=reason.strip(),
+                line=line,
+                column=column,
+                end_line=end_line,
+                end_column=end_column,
+                evidence=document.evidence(start, start + len(evidence)),
+                fix=fix.strip(),
             )
         )
     return diagnostics
@@ -116,15 +116,46 @@ _OPENROUTER_DECISION_MODEL = "openrouter/microsoft/microsoft-decision-1"
 _RETIRED_DECISION_MODELS = frozenset({"microsoft/microsoft-decision-1"})
 
 
+class _DecisionsEndpointUnsupported(Exception):
+    """The Decisions API rejected a model or endpoint before judging a unit."""
+
+
+def _is_decisions_endpoint_unsupported(error: Exception) -> bool:
+    response = getattr(error, "response", None)
+    for status in (getattr(error, "status_code", None), getattr(response, "status_code", None)):
+        if isinstance(status, int) and not isinstance(status, bool) and status in {404, 405, 501}:
+            return True
+    message = " ".join(
+        value
+        for value in (str(error), getattr(error, "message", ""), getattr(response, "text", ""))
+        if isinstance(value, str)
+    ).casefold()
+    if any(phrase in message for phrase in (
+        "unsupported endpoint",
+        "endpoint is unsupported",
+        "endpoint is not supported",
+        "does not support the decisions endpoint",
+        "does not support decisions",
+        "doesn't support decisions",
+        "does not support systemone",
+        "systemone is not supported",
+        "decisions api is not supported",
+        "unsupported model",
+    )):
+        return True
+    return "model " in message and " does not exist" in message
+
+
 def _judge_decisions(
     document: TextDocument,
     rules: tuple[Rule, ...],
     threshold: float,
     settings: DecisionAPISettings,
     *,
+    allow_endpoint_fallback: bool,
     ste_allowed_words: tuple[str, ...] = (),
     ste_disallowed_words: tuple[str, ...] = (),
-) -> list[Diagnostic]:
+) -> tuple[list[Diagnostic], bool]:
     questions = {
         rule.code: {
             "type": "noul",
@@ -153,20 +184,27 @@ def _judge_decisions(
     }
     units = document.units(rules[0].scope)
     if not units:
-        return []
+        return [], False
     findings: list[Diagnostic] = []
+    response_received = False
     try:
         for unit in units:
             evidence = document.evidence(unit.start, unit.end)
-            response = litellm.systemone(
-                model=settings.model,
-                state={"scope": unit.scope, "text": document.visible_text[unit.start:unit.end]},
-                questions=questions,
-                api_base=settings.api_base,
-                api_key=settings.api_key,
-                custom_llm_provider=settings.custom_llm_provider,
-                timeout=settings.timeout,
-            )
+            try:
+                response = litellm.systemone(
+                    model=settings.model,
+                    state={"scope": unit.scope, "text": document.visible_text[unit.start:unit.end]},
+                    questions=questions,
+                    api_base=settings.api_base,
+                    api_key=settings.api_key,
+                    custom_llm_provider=settings.custom_llm_provider,
+                    timeout=settings.timeout,
+                )
+            except Exception as exc:
+                if allow_endpoint_fallback and not response_received and _is_decisions_endpoint_unsupported(exc):
+                    raise _DecisionsEndpointUnsupported from exc
+                raise
+            response_received = True
             answers = getattr(response, "answers", None)
             if not isinstance(answers, Mapping) or set(answers) != set(questions):
                 raise AuditError("LiteLLM Decisions response must answer exactly the requested rule IDs")
@@ -178,20 +216,88 @@ def _judge_decisions(
                 if probability >= threshold:
                     line, column, end_line, end_column = document.span(unit.start, unit.end)
                     findings.append(Diagnostic(
-                        document.path,
-                        rule.code,
-                        f"{rule.name} ({unit.scope} scope): {rule.description} (decision probability {probability:.3f}).",
-                        line,
-                        column,
-                        end_line,
-                        end_column,
-                        evidence,
-                        "",
+                        path=document.path,
+                        code=rule.code,
+                        message=f"{rule.name} ({unit.scope} scope): {rule.description} (decision probability {probability:.3f}).",
+                        line=line,
+                        column=column,
+                        end_line=end_line,
+                        end_column=end_column,
+                        evidence=evidence,
+                        fix="",
                     ))
+    except _DecisionsEndpointUnsupported:
+        raise
     except AuditError:
         raise
     except Exception as exc:
         raise AuditError(f"LiteLLM Decisions call failed ({type(exc).__name__})") from exc
+    return findings, response_received
+
+
+def _judge_chat(
+    document: TextDocument,
+    rules: tuple[Rule, ...],
+    model: str,
+    litellm_config: LiteLLMConfig,
+    *,
+    decision_settings: DecisionAPISettings | None = None,
+    ste_allowed_words: tuple[str, ...] = (),
+    ste_disallowed_words: tuple[str, ...] = (),
+) -> list[Diagnostic]:
+    grouped: dict[RuleScope, list[Rule]] = {}
+    for rule in rules:
+        grouped.setdefault(rule.scope, []).append(rule)
+    findings: list[Diagnostic] = []
+    for group in grouped.values():
+        selected = tuple(group)
+        for unit in document.units(selected[0].scope):
+            try:
+                kwargs: dict[str, Any] = {
+                    "model": model,
+                    "messages": build_messages(
+                        document,
+                        selected,
+                        unit,
+                        ste_allowed_words=ste_allowed_words,
+                        ste_disallowed_words=ste_disallowed_words,
+                    ),
+                    "temperature": litellm_config.temperature,
+                    "response_format": {"type": "json_object"},
+                }
+                if decision_settings is not None:
+                    api_base = decision_settings.api_base
+                    if decision_settings.custom_llm_provider == "openrouter" and not api_base.rstrip("/").endswith("/v1"):
+                        api_base = f"{api_base.rstrip('/')}/v1"
+                    kwargs.update({
+                        "api_base": api_base,
+                        "api_key": decision_settings.api_key,
+                        "custom_llm_provider": decision_settings.custom_llm_provider,
+                    })
+                    if decision_settings.timeout is not None:
+                        kwargs["timeout"] = decision_settings.timeout
+                else:
+                    if litellm_config.api_base:
+                        kwargs["api_base"] = litellm_config.api_base
+                    if litellm_config.api_key_env:
+                        api_key = os.environ.get(litellm_config.api_key_env)
+                        if not api_key:
+                            raise AuditError(f"LiteLLM API key environment variable {litellm_config.api_key_env!r} is not set")
+                        kwargs["api_key"] = api_key
+                    if litellm_config.custom_llm_provider:
+                        kwargs["custom_llm_provider"] = litellm_config.custom_llm_provider
+                    if litellm_config.timeout is not None:
+                        kwargs["timeout"] = litellm_config.timeout
+                response = litellm.completion(**kwargs)
+            except AuditError:
+                raise
+            except Exception as exc:
+                raise AuditError(f"LiteLLM provider call failed: {exc}") from exc
+            try:
+                content = response.choices[0].message.content
+            except (AttributeError, IndexError, KeyError, TypeError) as exc:
+                raise AuditError("LiteLLM returned a malformed completion response") from exc
+            findings.extend(_parse_response(content, document, selected, unit))
     return findings
 
 
@@ -224,56 +330,44 @@ def judge_document(
     if decision_model and (isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or not 0 <= threshold <= 1):
         raise AuditError("LLM decision threshold must be a finite number between 0 and 1")
     settings = load_decision_api(litellm_config, decision_model_id) if decision_model else None
+    if not decision_model:
+        return _judge_chat(
+            document,
+            rules,
+            model,
+            litellm_config,
+            ste_allowed_words=ste_allowed_words,
+            ste_disallowed_words=ste_disallowed_words,
+        )
+
+    assert settings is not None
     grouped: dict[RuleScope, list[Rule]] = {}
     for rule in rules:
         grouped.setdefault(rule.scope, []).append(rule)
     findings: list[Diagnostic] = []
+    decisions_confirmed = False
     for group in grouped.values():
         selected = tuple(group)
-        if decision_model:
-            assert settings is not None
-            findings.extend(_judge_decisions(
+        try:
+            group_findings, response_received = _judge_decisions(
                 document,
                 selected,
                 threshold,
                 settings,
+                allow_endpoint_fallback=not decisions_confirmed,
                 ste_allowed_words=ste_allowed_words,
                 ste_disallowed_words=ste_disallowed_words,
-            ))
-            continue
-        for unit in document.units(selected[0].scope):
-            try:
-                kwargs: dict[str, Any] = {
-                    "model": model,
-                    "messages": build_messages(
-                        document,
-                        selected,
-                        unit,
-                        ste_allowed_words=ste_allowed_words,
-                        ste_disallowed_words=ste_disallowed_words,
-                    ),
-                    "temperature": litellm_config.temperature,
-                    "response_format": {"type": "json_object"},
-                }
-                if litellm_config.api_base:
-                    kwargs["api_base"] = litellm_config.api_base
-                if litellm_config.api_key_env:
-                    api_key = os.environ.get(litellm_config.api_key_env)
-                    if not api_key:
-                        raise AuditError(f"LiteLLM API key environment variable {litellm_config.api_key_env!r} is not set")
-                    kwargs["api_key"] = api_key
-                if litellm_config.custom_llm_provider:
-                    kwargs["custom_llm_provider"] = litellm_config.custom_llm_provider
-                if litellm_config.timeout is not None:
-                    kwargs["timeout"] = litellm_config.timeout
-                response = litellm.completion(**kwargs)
-            except AuditError:
-                raise
-            except Exception as exc:
-                raise AuditError(f"LiteLLM provider call failed: {exc}") from exc
-            try:
-                content = response.choices[0].message.content
-            except (AttributeError, IndexError, KeyError, TypeError) as exc:
-                raise AuditError("LiteLLM returned a malformed completion response") from exc
-            findings.extend(_parse_response(content, document, selected, unit))
+            )
+        except _DecisionsEndpointUnsupported:
+            return _judge_chat(
+                document,
+                rules,
+                settings.model,
+                litellm_config,
+                decision_settings=settings,
+                ste_allowed_words=ste_allowed_words,
+                ste_disallowed_words=ste_disallowed_words,
+            )
+        findings.extend(group_findings)
+        decisions_confirmed = decisions_confirmed or response_received
     return findings

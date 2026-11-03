@@ -115,15 +115,15 @@ def analyze_deterministic(
                     continue
                 line, column, end_line, end_column = document.span(paragraph.start, paragraph.end)
                 findings.append(Diagnostic(
-                    document.path,
-                    rule.code,
-                    f"Paragraph has {sentence_count} sentences; the maximum is six.",
-                    line,
-                    column,
-                    end_line,
-                    end_column,
-                    document.evidence(paragraph.start, paragraph.end),
-                    "Split the paragraph at a topic boundary without separating related information.",
+                    path=document.path,
+                    code=rule.code,
+                    message=f"Paragraph has {sentence_count} sentences; the maximum is six.",
+                    line=line,
+                    column=column,
+                    end_line=end_line,
+                    end_column=end_column,
+                    evidence=document.evidence(paragraph.start, paragraph.end),
+                    fix="Split the paragraph at a topic boundary without separating related information.",
                 ))
             continue
         if rule.code == "NAS002":
@@ -139,16 +139,29 @@ def analyze_deterministic(
                         continue
                     line, column, end_line, end_column = document.span(emoji.start(), emoji.end())
                     findings.append(Diagnostic(
-                        document.path, rule.code, "Remove decorative emoji from this heading.",
-                        line, column, end_line, end_column, document.evidence(emoji.start(), emoji.end()),
-                        "Use a plain heading that reflects the section's content.",
+                        path=document.path,
+                        code=rule.code,
+                        message="Remove decorative emoji from this heading.",
+                        line=line,
+                        column=column,
+                        end_line=end_line,
+                        end_column=end_column,
+                        evidence=document.evidence(emoji.start(), emoji.end()),
+                        fix="Use a plain heading that reflects the section's content.",
                     ))
                 continue
             pattern, message, fix = checks[rule.code]
             for match in pattern.finditer(document.visible_text, unit.start, unit.end):
                 line, column, end_line, end_column = document.span(match.start(), match.end())
                 findings.append(Diagnostic(
-                    document.path, rule.code, message.format(evidence=match.group()),
-                    line, column, end_line, end_column, document.evidence(match.start(), match.end()), fix,
+                    path=document.path,
+                    code=rule.code,
+                    message=message.format(evidence=match.group()),
+                    line=line,
+                    column=column,
+                    end_line=end_line,
+                    end_column=end_column,
+                    evidence=document.evidence(match.start(), match.end()),
+                    fix=fix,
                 ))
     return sorted(findings, key=lambda item: (item.line, item.column, item.code))
