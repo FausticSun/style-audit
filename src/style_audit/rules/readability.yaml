@@ -1,0 +1,128 @@
+schema_version: 1
+rules:
+- code: RDL101
+  name: Long syntactic dependencies
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A2
+  prompt: >-
+    Flag a syntactic dependency only when intervening clauses or modifiers make it difficult to
+    connect a subject, verb, object, or modifier to its partner. Identify the separated partners
+    and the processing burden; suggest bringing them closer or splitting the sentence without
+    losing meaning. Do not flag a sentence merely for its word count, or invent a numeric dependency-length
+    cutoff.
+  examples:
+  - before: The report that the manager whom the consultant the board hired advised approved disappeared.
+    after: The board hired the consultant, who advised the manager. The manager approved the report.
+      The report disappeared.
+    explanation: >-
+      Nested clauses delay the main verb and make it hard to track the report, board, consultant,
+      and manager. The revision makes each participant and action explicit.
+- code: RDL102
+  name: Difficult object relative clauses
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A2.SS1
+  prompt: >-
+    Flag an object relative clause, with or without an overt relativizer, only when its noncanonical
+    word order, embedding, or competing participants makes the roles hard to follow. In an object
+    relative the modified noun is the relative clause's object, not its subject. Preserve clear,
+    familiar constructions such as 'the book I read'; do not flag subject relatives or prescribe
+    passive voice universally.
+  examples:
+  - before: The intern the editor the manager praised hired left.
+    after: The manager praised the editor, who hired the intern. The intern left.
+    explanation: >-
+      The intern is the object of hired, and the editor is the object of praised. Unnest the object
+      relatives so their roles are explicit; clear short object relatives remain valid.
+- code: RDL103
+  name: Ambiguous omitted clause markers
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A3.T3
+  prompt: >-
+    Flag omission of an optional 'that' in an object relative or complement clause, including
+    'so (that)' and 'sure (that)', only when it causes a garden path, obscures the clause boundary,
+    or forces rereading that an explicit marker would avoid. Explain the competing parses without
+    inventing the intended meaning. Keep clear short omissions; do not lengthen every syntactic
+    alternation or treat optional words as mandatory.
+  examples:
+  - before: The coach knew the players assigned to train with the reserve team missed practice.
+    after: The coach knew that the players assigned to train with the reserve team missed practice.
+    explanation: >-
+      The intended meaning here is knowledge that the players missed practice, not acquaintance
+      with the players. That marks the complement boundary before a long modifier invites the
+      direct-object reading.
+- code: RDL104
+  name: Opaque stacked noun compounds
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A2.SS1
+  prompt: >-
+    Flag a compound of three or more nouns in a noun-modifier relationship only when its grouping
+    or the relations between nouns are unclear. Identify the noun stack and explain the ambiguous
+    relations; suggest explicit prepositions or a clause without inventing facts. Do not count
+    ordinary adjective sequences as noun stacks, and preserve familiar, unambiguous terms and
+    necessary domain terminology.
+  examples:
+  - before: The team changed the customer account access exception review policy.
+    after: The team changed the policy for reviewing exceptions to access rules for customer accounts.
+    explanation: >-
+      Here the policy governs reviews of exceptions to customer-account access rules. Stating
+      those relationships resolves the noun grouping; do not assume this interpretation for a
+      real draft without context.
+- code: RDL105
+  name: Unfamiliar denominal verbs
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A2.SS1
+  prompt: >-
+    Flag an ad-hoc verb formed from a noun only when the reader must infer an unclear action or
+    noun-to-verb conversion obscures the meaning. Identify the converted noun and the interpretation
+    burden; prefer an explicit action when supported by the sentence. Preserve conventional verbs
+    such as 'bottle', 'email', and 'park', understandable domain usage, and deliberate wordplay.
+    Do not classify unfamiliar words by rarity alone.
+  examples:
+  - before: Please spreadsheet the complaint.
+    after: Please record the complaint in the spreadsheet.
+    explanation: >-
+      Here the intended action is recording the complaint, not calculating or analyzing it. State
+      that action; conventional verbs such as email do not need replacement.
+- code: RDL106
+  name: Confusing inanimate-agent mismatches
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A2.SS1
+  prompt: >-
+    Flag an inanimate subject with an active verb that normally requires an animate agent only
+    when the mismatch makes agency or the intended action hard to understand. Identify the subject,
+    verb, and resulting confusion. Preserve conventional metonymy such as 'the paper argues',
+    clear technical idioms, and intentional personification or metaphor. Do not ban all inanimate
+    subjects, all active verbs, or invent an unnamed human actor.
+  examples:
+  - before: In the approval procedure, the invoice hopes the reviewer forgives its missing approval.
+    after: In the approval procedure, the reviewer might accept the invoice despite its missing
+      approval.
+    explanation: >-
+      For literal procedural copy, state whether the reviewer might accept the invoice rather
+      than attributing human feelings to a document. This revision retains the intended uncertainty;
+      deliberate personification could be valid in another context.
+- code: RDL107
+  name: Hard-to-interpret word combinations
+  engine: llm
+  scope: sentence
+  source: https://arxiv.org/html/2610.29162v1#A2.SS2
+  prompt: >-
+    Flag an unexpected word pair or short word sequence only when its combination makes the local
+    meaning hard to predict or reconstruct; explain the interpretation burden and suggest a clearer
+    equivalent only when the meaning is supported. This is a qualitative readability judgment,
+    not a measurement of corpus attestation, n-gram probability, surprisal, or perplexity. Do
+    not invent frequency statistics or penalize proper names, precise technical vocabulary, useful
+    novelty, or clear creative language merely for being uncommon.
+  examples:
+  - before: The instructions omit the deadline, collateralizing instruction latency against deadline
+      intent.
+    after: The instructions omit the deadline.
+    explanation: >-
+      The financial word combination supplies no reconstructable mechanism. Keep the omission
+      already stated rather than inventing another claim; unusual but clear metaphors remain valid.

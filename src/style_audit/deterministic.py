@@ -1,54 +1,21 @@
-"""Conservative deterministic checks for explicit source rules."""
+"""Deterministic checks driven by the bundled rule catalog."""
 
 import re
+from functools import lru_cache
 
-from .models import Diagnostic, Rule
+from .models import Diagnostic, RegexDetector, Rule, SentenceCountDetector
 from .rules import RULES
 from .text import TextDocument
 
-_BANNED_TERMS = (
-    "delve",
-    "foster",
-    "leverage",
-    "utilize",
-    "facilitate",
-    "empower",
-    "streamline",
-    "robust",
-    "cutting-edge",
-    "paradigm shift",
-    "game changer",
-    "this is huge",
-    "this changes everything",
-    "tapestry",
-    "realm",
-    "beacon",
-    "multifaceted",
-    "meticulous",
-    "intricate",
-    "paramount",
-    "transformative",
-    "elevate",
-    "embark",
-    "supercharge",
-    "harness",
-    "ever-evolving",
-)
-
-_BANNED_PATTERN = re.compile(
-    r"(?<!\w)(?:" + "|".join(re.escape(term) for term in _BANNED_TERMS) + r")(?!\w)",
-    re.IGNORECASE,
-)
-_EMOJI = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF]")
-_INFLATED_VERB = re.compile(r"(?<!\w)(?:serves as|made a decision|has the ability to)(?!\w)", re.IGNORECASE)
-_SEMICOLON = re.compile(r";")
 _TABLE_SEPARATOR_CELL = re.compile(r":?-{3,}:?\Z")
 
 
 def _term_pattern(terms: tuple[str, ...]) -> re.Pattern[str]:
     if not terms:
         return re.compile(r"(?!)")
-    return re.compile(r"(?<!\w)(?:" + "|".join(re.escape(term) for term in terms) + r")(?!\w)", re.IGNORECASE)
+    alternatives = "|".join(re.escape(term) for term in terms)
+    return re.compile(r"(?<!\w)(?:" + alternatives + r")(?!\w)", re.IGNORECASE)
+
 
 def _is_markdown_table(text: str) -> bool:
     rows = [line.strip() for line in text.splitlines() if line.strip()]
@@ -58,6 +25,70 @@ def _is_markdown_table(text: str) -> bool:
     if not columns or not all(_TABLE_SEPARATOR_CELL.fullmatch(cell) for cell in columns):
         return False
     return all(len(row.strip("|").split("|")) == len(columns) for row in rows)
+
+
+def _diagnostic(
+    document: TextDocument,
+    rule: Rule,
+    start: int,
+    end: int,
+    message: str,
+    fix: str,
+) -> Diagnostic:
+    line, column, end_line, end_column = document.span(start, end)
+    return Diagnostic(
+        path=document.path,
+        code=rule.code,
+        message=message,
+        line=line,
+        column=column,
+        end_line=end_line,
+        end_column=end_column,
+        evidence=document.evidence(start, end),
+        fix=fix,
+    )
+
+
+def _merge_matches(primary, additional):
+    """Keep regex-union ordering while merging configurable NAS terms."""
+    ordered = [(match, 0) for match in primary] + [(match, 1) for match in additional]
+    ordered.sort(key=lambda item: (item[0].start(), item[1]))
+    selected = []
+    for match, _ in ordered:
+        if selected and match.start() < selected[-1].end():
+            continue
+        selected.append(match)
+    return selected
+
+
+def _regex_flags(detector: RegexDetector) -> int:
+    return re.IGNORECASE if "ignorecase" in detector.flags else 0
+
+
+@lru_cache(maxsize=64)
+def _compile_pattern(pattern: str, flags: int) -> re.Pattern[str]:
+    return re.compile(pattern, flags)
+
+
+def _append_regex_finding(
+    findings: list[Diagnostic],
+    document: TextDocument,
+    rule: Rule,
+    detector: RegexDetector,
+    match: re.Match[str],
+) -> None:
+    if match.start() == match.end():
+        return
+    findings.append(
+        _diagnostic(
+            document,
+            rule,
+            match.start(),
+            match.end(),
+            detector.message.format(evidence=match.group()),
+            detector.fix,
+        )
+    )
 
 
 def analyze_deterministic(
@@ -70,98 +101,83 @@ def analyze_deterministic(
 ) -> list[Diagnostic]:
     selected = rules if rules is not None else tuple(rule for rule in RULES if rule.engine == "deterministic")
     allowed = {word.casefold() for word in nas_allowed_words}
-    nas_terms = tuple(term for term in _BANNED_TERMS if term.casefold() not in allowed) + nas_disallowed_words
-    nas_pattern = _BANNED_PATTERN if not nas_allowed_words and not nas_disallowed_words else _term_pattern(nas_terms)
-    checks = {
-        "NAS001": (
-            nas_pattern,
-            "Avoid the explicitly discouraged term {evidence!r}.",
-            "Replace it with a direct, concrete word that fits the intended meaning.",
-        ),
-        "NAS003": (
-            _INFLATED_VERB,
-            "Replace the inflated verb phrase {evidence!r} with a direct verb.",
-            "Use a concise verb, such as 'is', 'has', or 'decided', when it preserves the meaning.",
-        ),
-        "STE801": (
-            _SEMICOLON,
-            "A semicolon is not permitted in editable STE prose.",
-            "Replace the semicolon with punctuation that preserves the intended meaning.",
-        ),
-    }
-    if ste_disallowed_words:
-        checks["STE101"] = (
-            _term_pattern(ste_disallowed_words),
-            "Term {evidence!r} is disallowed by the configured STE vocabulary.",
-            "Use an approved term that preserves the intended technical meaning.",
-        )
     findings: list[Diagnostic] = []
+    nas_disallowed_pattern = _term_pattern(nas_disallowed_words) if nas_disallowed_words else None
+    ste_disallowed_pattern = _term_pattern(ste_disallowed_words) if ste_disallowed_words else None
+
     for rule in selected:
-        if rule.code == "STE101" and not ste_disallowed_words:
+        if rule.code == "STE101":
+            if ste_disallowed_pattern is not None:
+                for unit in document.units(rule.scope):
+                    for match in ste_disallowed_pattern.finditer(document.visible_text, unit.start, unit.end):
+                        findings.append(_diagnostic(
+                            document,
+                            rule,
+                            match.start(),
+                            match.end(),
+                            f"Term {match.group()!r} is disallowed by the configured STE vocabulary.",
+                            "Use an approved term that preserves the intended technical meaning.",
+                        ))
             continue
-        if rule.code == "STE606":
+        if rule.engine != "deterministic":
+            continue
+
+        detector = rule.detector
+        if isinstance(detector, SentenceCountDetector):
             sentences = document.units("sentence")
             sentence_index = 0
-            for paragraph in document.units(rule.scope):
-                if _is_markdown_table(document.visible_text[paragraph.start:paragraph.end]):
+            for unit in document.units(rule.scope):
+                if detector.skip_markdown_tables and _is_markdown_table(
+                    document.visible_text[unit.start:unit.end]
+                ):
                     continue
-                while sentence_index < len(sentences) and sentences[sentence_index].end <= paragraph.start:
+                while sentence_index < len(sentences) and sentences[sentence_index].end <= unit.start:
                     sentence_index += 1
                 first_sentence = sentence_index
-                while sentence_index < len(sentences) and sentences[sentence_index].start < paragraph.end:
+                while sentence_index < len(sentences) and sentences[sentence_index].start < unit.end:
                     sentence_index += 1
                 sentence_count = sentence_index - first_sentence
-                if sentence_count <= 6:
+                if sentence_count <= detector.max_sentences:
                     continue
-                line, column, end_line, end_column = document.span(paragraph.start, paragraph.end)
-                findings.append(Diagnostic(
-                    path=document.path,
-                    code=rule.code,
-                    message=f"Paragraph has {sentence_count} sentences; the maximum is six.",
-                    line=line,
-                    column=column,
-                    end_line=end_line,
-                    end_column=end_column,
-                    evidence=document.evidence(paragraph.start, paragraph.end),
-                    fix="Split the paragraph at a topic boundary without separating related information.",
+                findings.append(_diagnostic(
+                    document,
+                    rule,
+                    unit.start,
+                    unit.end,
+                    f"Paragraph has {sentence_count} sentences; the maximum is {detector.max_sentences}.",
+                    "Split the paragraph at a topic boundary without separating related information.",
                 ))
             continue
-        if rule.code == "NAS002":
-            headings = iter(document.heading_spans)
-            heading = next(headings, None)
+
+        if not isinstance(detector, RegexDetector):
+            continue
+        pattern = _compile_pattern(detector.pattern, _regex_flags(detector))
+        if detector.target == "heading":
+            scope_units = document.units(rule.scope)
+            for heading_start, heading_end in document.heading_spans:
+                match = pattern.search(document.visible_text, heading_start, heading_end)
+                if match is None or not any(
+                    unit.start <= match.start() < unit.end for unit in scope_units
+                ):
+                    continue
+                _append_regex_finding(findings, document, rule, detector, match)
+            continue
+
         for unit in document.units(rule.scope):
-            if rule.code == "NAS002":
-                while heading is not None and heading[0] < unit.end:
-                    heading_start, heading_end = heading
-                    heading = next(headings, None)
-                    emoji = _EMOJI.search(document.visible_text, heading_start, heading_end)
-                    if emoji is None or not unit.start <= emoji.start() < unit.end:
-                        continue
-                    line, column, end_line, end_column = document.span(emoji.start(), emoji.end())
-                    findings.append(Diagnostic(
-                        path=document.path,
-                        code=rule.code,
-                        message="Remove decorative emoji from this heading.",
-                        line=line,
-                        column=column,
-                        end_line=end_line,
-                        end_column=end_column,
-                        evidence=document.evidence(emoji.start(), emoji.end()),
-                        fix="Use a plain heading that reflects the section's content.",
-                    ))
-                continue
-            pattern, message, fix = checks[rule.code]
-            for match in pattern.finditer(document.visible_text, unit.start, unit.end):
-                line, column, end_line, end_column = document.span(match.start(), match.end())
-                findings.append(Diagnostic(
-                    path=document.path,
-                    code=rule.code,
-                    message=message.format(evidence=match.group()),
-                    line=line,
-                    column=column,
-                    end_line=end_line,
-                    end_column=end_column,
-                    evidence=document.evidence(match.start(), match.end()),
-                    fix=fix,
+            primary = [
+                match
+                for match in pattern.finditer(document.visible_text, unit.start, unit.end)
+                if rule.code != "NAS001" or match.group().casefold() not in allowed
+            ]
+            additional = (
+                list(nas_disallowed_pattern.finditer(
+                    document.visible_text, unit.start, unit.end
                 ))
+                if rule.code == "NAS001" and nas_disallowed_pattern is not None
+                else []
+            )
+            matches = _merge_matches(primary, additional) if additional else primary
+            for match in matches:
+                _append_regex_finding(findings, document, rule, detector, match)
+
     return sorted(findings, key=lambda item: (item.line, item.column, item.code))

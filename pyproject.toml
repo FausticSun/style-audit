@@ -3,7 +3,7 @@ name = "style-audit"
 version = "0.1.0"
 description = "A Python writing-style auditor combining deterministic NLP and LLM judgments."
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "third_party/no-ai-slop-LICENSE"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["click>=8.1", "litellm>=1.106.4", "pydantic>=2.10,<3", "PyYAML>=6.0"]

@@ -1,0 +1,1136 @@
+schema_version: 1
+rules:
+- code: STE101
+  name: Lexical authorization
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.1 (page 1-1-2). Use terms supported by the controlled vocabulary
+    or justified as technical nouns or verbs for the relevant subject field. Do not infer approval
+    from familiarity, rarity, or technical-sounding form. The supplied Issue 9 PDF includes Part
+    2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: Replace the approved component name with an informal substitute.
+    after: Use the component name listed in the project glossary.
+    explanation: >-
+      The concern is authorization in the applicable field; an editor must supply the governing
+      dictionary or glossary.
+- code: STE102
+  name: Authorized part of speech
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.2 (page 1-1-2–1-1-3). Use an approved word only in a grammatical
+    role that its dictionary entry permits. Check the entry before treating a familiar form as
+    an approved noun, verb, or adjective. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The operator samples the fluid.
+    after: The operator takes a fluid sample.
+    explanation: >-
+      This is a candidate only if the authorized entry permits the noun but not the verb form
+      in this project.
+- code: STE103
+  name: Authorized word sense
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.3 (page 1-1-4). Keep an approved word within the meaning
+    specified for it. Use the sentence and technical context to distinguish restricted meanings;
+    do not substitute a near-synonym without checking that it preserves the intended action or
+    condition. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog
+    does not ingest its entries or project terminology. Use the authorized, applicable vocabulary
+    when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The procedure follows the green lamps to the exit.
+    after: The procedure obeys the green-lamp instructions at the exit.
+    explanation: >-
+      The first wording could assign a different sense to the verb; confirm the approved entry
+      and actual direction before revising.
+- code: STE104
+  name: Authorized inflections
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.4 (page 1-1-4–1-1-5). Use only verb and adjective forms
+    listed for the applicable dictionary entry. Do not assume an inflection or comparison is allowed
+    merely because ordinary English morphology can form it. The supplied Issue 9 PDF includes
+    Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The indicator is dimmest at this setting.
+    after: The indicator is at its lowest-intensity setting.
+    explanation: >-
+      The superlative needs review against the entry and technical meaning; the alternative is
+      valid only if it describes the same specified condition.
+- code: STE105
+  name: Technical noun categories
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.5 (page 1-1-5–1-1-9). A non-dictionary noun may be used
+    as a technical noun when it names a specified concept in the relevant field and fits the standard's
+    technical-noun categories. Those categories are examples, not a complete vocabulary. The supplied
+    Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its
+    entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: Record the drift value in the service log.
+    after: Record the measured offset in the service log.
+    explanation: >-
+      Whether drift is an authorized technical noun depends on the specified concept and field
+      glossary; do not decide from the word alone.
+- code: STE106
+  name: Nonlisted technical nouns
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.6 (page 1-1-9–1-1-10). Use a word absent from the approved
+    list only when it is a technical noun or part of one in this context. A word can be valid
+    inside a technical term and unsuitable in ordinary prose. The supplied Issue 9 PDF includes
+    Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: A second technician is available as snapshot.
+    after: A second technician is available as a substitute.
+    explanation: >-
+      The first use needs review because it does not identify a supported technical-noun sense;
+      confirm the intended role and authorized terminology.
+- code: STE107
+  name: Noun used as an action
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.7 (page 1-1-10). Do not use a technical noun as a verb
+    unless the same form is separately authorized as a technical verb. Keep the noun as a noun
+    or modifier when that is its approved role. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Powder the guide rail before assembly.
+    after: Apply powder to the guide rail before assembly.
+    explanation: >-
+      This is a review candidate only if powder is authorized as a material noun but not as the
+      action verb; verify the field vocabulary.
+- code: STE108
+  name: Approved field terminology
+  engine: llm
+  scope: section
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.8 (page 1-1-11). Prefer the technical noun formally approved
+    by the relevant company, industry, or subject field. Consult the governing glossary or official
+    parts information rather than replacing a potentially controlled term with a generic synonym.
+    The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not
+    ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: 'The control unit is listed as the actuator in the parts register. Later: remove the
+      drive module.'
+    after: 'The control unit is listed as the actuator in the parts register. Later: remove the
+      actuator.'
+    explanation: >-
+      The wording is inconsistent only if both names identify the same approved item; check the
+      authoritative parts source first.
+- code: STE109
+  name: Concise technical nouns
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.9 (page 1-1-12). When no approved field term exists and
+    a technical noun must be selected, prefer a short, readily understood term; the source sets
+    a maximum of three words for that selected noun. Keep precision needed to distinguish components.
+    The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not
+    ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Remove the upper forward exterior access enclosure cover.
+    after: Remove the access cover.
+    explanation: >-
+      The shorter form is appropriate only if the drawing and surrounding text identify the same
+      part unambiguously; never shorten a fixed official name.
+- code: STE110
+  name: Regional and specialist jargon
+  engine: llm
+  scope: section
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.10 (page 1-1-12). Avoid regional, slang, or narrowly understood
+    jargon as a technical noun when it is likely to confuse the intended readers. Prefer a familiar
+    term only when it preserves the technical distinction. The supplied Issue 9 PDF includes Part
+    2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: Move your kit to the service bay.
+    after: Move the specified tools to the service bay.
+    explanation: >-
+      Kit may be local jargon for equipment; retain it if the project defines it and the audience
+      understands it.
+- code: STE111
+  name: Consistent item naming
+  engine: llm
+  scope: document
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.11 (page 1-1-13). Use the same approved technical noun
+    for the same item throughout a document. First establish that two mentions refer to one item;
+    distinct components must retain distinct names. The supplied Issue 9 PDF includes Part 2's
+    controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: Disconnect the intake screen. Inspect the filter panel. Reinstall the mesh cover.
+    after: Disconnect the intake screen. Inspect the intake screen. Reinstall the intake screen.
+    explanation: >-
+      Normalize names only if the parts list confirms all three phrases refer to the same component.
+- code: STE112
+  name: Technical verbs
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.12 (page 1-1-13–1-1-15). A verb may be a technical verb
+    when it names a specified process in a subject field. Use an accurate authorized verb; do
+    not reject specialized verbs by rarity or approve them without the applicable glossary. The
+    supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest
+    its entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: The instrument performs a numeric scan of the sample.
+    after: The instrument scans the sample.
+    explanation: >-
+      The direct verb is suitable only if scan is approved for this process and preserves the
+      measurement meaning.
+- code: STE113
+  name: Technical verb as a noun
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.13 (page 1-1-16). Do not use a technical verb as a noun.
+    Distinguish a true noun, an authorized participial adjective, and a noun form created from
+    the action by checking syntax and the approved entry. The supplied Issue 9 PDF includes Part
+    2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The width received a coat during processing.
+    after: The operator coated the surface during processing.
+    explanation: >-
+      Use an action verb when it expresses the intended operation; keep a legitimate technical
+      noun or authorized adjective.
+- code: STE114
+  name: American spelling default
+  engine: llm
+  scope: document
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 1.14 (page 1-1-17). Use American English spelling unless
+    an applicable official directive sets another variety. Preserve quoted text, official names,
+    and mandated wording rather than normalizing them. The supplied Issue 9 PDF includes Part
+    2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The centre unit controls output.
+    after: The center unit controls output.
+    explanation: >-
+      Use the American form in editable prose unless a directive specifies otherwise; preserve
+      the exact spelling inside a quoted label.
+- code: STE201
+  name: Short multi-word nouns
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 2.1 (page 1-2-1–1-2-2). Keep a multi-word noun to three words
+    or fewer where the intended term can be stated clearly. For a longer phrase, consider an explicit
+    relation or a sentence construction instead of a dense modifier chain. The supplied Issue
+    9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: Check the pump seal location marker.
+    after: Check the marker that identifies the pump-seal location.
+    explanation: >-
+      Count and parse the noun phrase, but preserve a recognized indivisible technical name; the
+      word limit is not a license to rename a component.
+- code: STE202
+  name: Long official noun forms
+  engine: llm
+  scope: section
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 2.2 (page 1-2-2–1-2-4). Write an official technical noun
+    in full at first use. Later, define a clear shorter form or use hyphens only to join words
+    that genuinely form one unit; do not invent groupings or obscure the name. The supplied Issue
+    9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: Install the thermal relay enclosure assembly. Then inspect the relay box.
+    after: Install the thermal relay enclosure assembly (the relay assembly). Then inspect the
+      relay assembly.
+    explanation: >-
+      Use the shortened form only after its referent is explicit and approved; preserve official
+      spelling and word grouping.
+- code: STE301
+  name: Listed verb forms
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.1 (page 1-3-1). Use only the forms specified for the applicable
+    approved verb. Morphology alone cannot establish the permitted paradigm, especially for irregular
+    forms; check the authoritative entry. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The technician gived the unit a visual check.
+    after: The technician gave the unit a visual check.
+    explanation: >-
+      The correction illustrates an irregular past form; confirm the form in the governing entry
+      and retain the intended meaning.
+- code: STE302
+  name: Permitted verb tenses
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.2 (page 1-3-2). Use the infinitive, imperative, simple
+    present, simple past, simple future, or a permitted past participle as an adjective. Avoid
+    other tense or aspect constructions; do not mistake an authorized adjective or modal for one.
+    The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not
+    ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The operator has been checking the pressure.
+    after: The operator checked the pressure.
+    explanation: >-
+      The simple-past alternative is valid only if it preserves the time and completion facts
+      of the original.
+- code: STE303
+  name: Past participles as adjectives
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.3 (page 1-3-2–1-3-3). Use a permitted past-participle form
+    as an adjective to describe a condition, before a noun or after an appropriate linking verb.
+    Verify that the entry allows the form; not every participle is an adjective. The supplied
+    Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its
+    entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: Inspect the part that was sealed assembly.
+    after: Inspect the sealed assembly.
+    explanation: >-
+      The shorter modifier is valid only if sealed is authorized and describes the assembly's
+      state, not a separate event.
+- code: STE304
+  name: Complex auxiliary constructions
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.4 (page 1-3-3). Avoid auxiliary combinations that create
+    disallowed complex verb constructions, including unneeded perfect and passive forms. Keep
+    allowed modal meaning and use active wording only when it preserves the agent and technical
+    facts. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog
+    does not ingest its entries or project terminology. Use the authorized, applicable vocabulary
+    when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The setting has been adjusted by the operator.
+    after: The operator adjusted the setting.
+    explanation: >-
+      Use the active form only if the operator is the established agent and the perfect aspect
+      is not technically important.
+- code: STE305
+  name: Verb-ing forms
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.5 (page 1-3-4–1-3-5). Use an -ing verb form only as a technical
+    noun or as a modifier inside a technical noun. Do not treat every word ending in -ing as a
+    verb: nouns, approved adjectives, prepositions, and established terms are exceptions. The
+    supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest
+    its entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: While opening the cabinet, check the indicator.
+    after: Before you open the cabinet, check the indicator.
+    explanation: >-
+      The first phrase describes an ongoing action; preserve -ing forms when they are authorized
+      nouns or modifiers in a technical term.
+- code: STE306
+  name: Active voice and known agents
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.6 (page 1-3-5–1-3-8). Prefer active voice. In descriptive
+    text, passive voice is appropriate only when the agent is unknown; do not invent an agent
+    or change causation to force an active sentence. The supplied Issue 9 PDF includes Part 2's
+    controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The result is stored by the controller.
+    after: The controller stores the result.
+    explanation: >-
+      Use the active version only if the controller is the verified agent; an unknown agent can
+      justify passive voice in descriptive text.
+- code: STE307
+  name: Verbs for actions
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 3.7 (page 1-3-9). Describe an action with an approved verb
+    rather than an action noun or another part of speech when the verb states the same operation
+    clearly. Check approval and preserve the original technical meaning. The supplied Issue 9
+    PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: Before panel removal, perform an isolation of the supply.
+    after: Before you remove the panel, isolate the supply.
+    explanation: >-
+      The direct actions are appropriate only if remove and isolate are authorized and do not
+      alter a required instruction.
+- code: STE401
+  name: Clear sentence structure
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 4.1 (page 1-4-1–1-4-2). Write clearly and directly. In procedures,
+    make the instruction and action easy to identify; in descriptive prose, keep one main subject
+    or idea per sentence and build details gradually. Avoid unsupported abstraction, not useful
+    technical qualification. The supplied Issue 9 PDF includes Part 2's controlled dictionary,
+    but this catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The unit provides a comprehensive indication of operating status across several areas.
+    after: The unit shows the input voltage and the fault state.
+    explanation: >-
+      Use concrete details only when supported by the source; do not invent specifications to
+      make a sentence appear precise.
+- code: STE402
+  name: Complete wording
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 4.2 (page 1-4-3). Do not shorten a sentence by omitting words
+    needed to identify its subject, action, object, or article, or by using a contraction. Distinguish
+    genuine omissions from concise but grammatical technical labels and preserve verbatim text.
+    The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not
+    ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: If loose, don’t tighten.
+    after: If the latch is loose, do not tighten it.
+    explanation: >-
+      The revision is suitable only when the latch is the intended referent and the instruction's
+      meaning is unchanged.
+- code: STE403
+  name: Vertical-list structure
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 4.3 (page 1-4-4–1-4-6). Use a vertical list for complex groups
+    of items or actions. Connect the lead-in with a colon, identify each item, capitalize the
+    start, and punctuate complete sentences differently from fragments; avoid trailing commas
+    or semicolons and end the final item with a period. Keep procedure and description separate
+    within a list; follow official layout directives. The supplied Issue 9 PDF includes Part 2's
+    controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: 'Prepare the kit: tray, cable, guide, and clamp.'
+    after: 'Prepare the kit as follows:
+
+      - The tray
+
+      - The cable
+
+      - The guide
+
+      - The clamp.'
+    explanation: >-
+      A vertical layout helps only when the content is a complex list; list item grammar and publication-specific
+      symbols still need review.
+- code: STE404
+  name: Logical sentence connections
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 4.4 (page 1-4-7). Use an appropriate connecting word or phrase
+    when it clarifies how one sentence relates to the next. Choose a connector that accurately
+    expresses addition, contrast, sequence, or result; do not add one mechanically. The supplied
+    Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its
+    entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: The filter blocks dust. However, the downstream air is clean.
+    after: The filter blocks dust. Thus, the downstream air is clean.
+    explanation: >-
+      The causal connector is correct only if the filter explains the stated result; check the
+      technical relationship and approved vocabulary.
+- code: STE405
+  name: Articles and demonstratives
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 4.5 (page 1-4-8–1-4-9). Where grammar and meaning require
+    it, use an article or demonstrative before a noun or multi-word noun. Avoid omissions that
+    obscure a specific referent; do not force articles into general or abstract statements. Do
+    not put a definite article before a noun followed by an alphanumeric identifier. The supplied
+    Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its
+    entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: Install gasket on the bracket.
+    after: Install the gasket on the bracket.
+    explanation: >-
+      The article is needed only if a specific gasket and bracket are intended; bare nouns can
+      be correct in general statements.
+- code: STE501
+  name: Procedural sentence length
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 5.1 (page 1-5-1–1-5-2). Limit each procedural sentence, including
+    safety instructions, to 20 words. Exclude notes, which have a separate limit. Apply the Section
+    8 counting conventions, including list lead-ins and items; do not use whitespace splitting
+    as a substitute. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this
+    catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Before the scheduled service begins, make sure that every access panel is secured
+      and the work area is clear of loose objects.
+    after: Before service, secure every access panel. Clear loose objects from the work area.
+    explanation: >-
+      The limit is 20 words per procedural sentence; classify the text and count using the applicable
+      Section 8 conventions.
+- code: STE502
+  name: One instruction per sentence
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 5.2 (page 1-5-2–1-5-3). Normally give one instruction per
+    sentence and separate actions into steps when they do not occur together. Multiple actions
+    may share a sentence when simultaneous; a work step may use multiple sentences for simultaneous
+    actions or an immediate result. The supplied Issue 9 PDF includes Part 2's controlled dictionary,
+    but this catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Open the guard and remove the insert.
+    after: Open the guard. Remove the insert.
+    explanation: >-
+      Separate actions only when they are sequential; preserve an established simultaneous operation
+      or immediate result within its work step.
+- code: STE503
+  name: Imperative instructions
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 5.3 (page 1-5-3–1-5-4). Write a work instruction in the imperative
+    form. Do not add must before the command except for an important safety instruction or important
+    condition. Distinguish instructions from description and do not change legal force. The supplied
+    Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its
+    entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: The blue key should be pressed to reset the display.
+    after: Press the blue key to reset the display.
+    explanation: >-
+      The command is suitable only if the text is a work instruction and not a descriptive or
+      legally constrained statement.
+- code: STE504
+  name: Condition before command
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 5.4 (page 1-5-4). When a reader must know a condition before
+    acting, state the condition first and separate it from the imperative command with a comma.
+    Preserve clause scope because punctuation can change the meaning. The supplied Issue 9 PDF
+    includes Part 2's controlled dictionary, but this catalog does not ingest its entries or project
+    terminology. Use the authorized, applicable vocabulary when it determines review; do not guess
+    or certify technical facts.
+  examples:
+  - before: Release the latch when the indicator turns green.
+    after: When the indicator turns green, release the latch.
+    explanation: >-
+      Move the condition to the front only when the reader needs it before starting the action
+      and the condition remains unchanged.
+- code: STE505
+  name: Informational notes
+  engine: llm
+  scope: section
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 5.5 (page 1-5-5–1-5-7). Use notes for information, not commands,
+    requirements, limits, tolerances, or work-step results. Each note sentence is at most 25 words.
+    A procedure must remain performable without its notes; place essential or safety information
+    in the appropriate step. Use notes in descriptions only when they support an illustration
+    or table. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog
+    does not ingest its entries or project terminology. Use the authorized, applicable vocabulary
+    when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: 'NOTE: Press the reset key before leaving the area.'
+    after: (Work step) Press the reset key before you leave the area.
+    explanation: >-
+      The note contains a command; review the whole procedure and move required actions to a work
+      step without losing safety context.
+- code: STE601
+  name: Gradual descriptive flow
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 6.1 (page 1-6-1–1-6-2). In descriptive text, introduce information
+    progressively and keep each sentence focused on one subject or idea. Avoid imperative wording
+    in descriptions; retain accurate detail and necessary qualifications. The supplied Issue 9
+    PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: The cabinet contains a fan, alarm, drain, backup supply, and controller, all of which
+      react differently during a power loss.
+    after: The cabinet contains a fan. The alarm signals a fault. The drain removes collected
+      water. The controller manages the backup supply.
+    explanation: >-
+      Split only where each sentence remains technically accurate and the system relationships
+      are supported by source material.
+- code: STE602
+  name: Key terms and logical flow
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 6.2 (page 1-6-2–1-6-3). Use recurring key words or phrases
+    to make relationships between ideas visible. Keep terminology stable, and use connecting words
+    only when they express the actual logical relation. The supplied Issue 9 PDF includes Part
+    2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The file is encrypted. This safeguard limits access. The protection is removed after
+      review.
+    after: The file is encrypted. This protection limits access. The protection is removed after
+      review.
+    explanation: >-
+      Repeat a term when it denotes the same concept; preserve a different term when the system
+      defines a real distinction.
+- code: STE603
+  name: Descriptive sentence length
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 6.3 (page 1-6-4). Limit each descriptive sentence to 25 words.
+    Use the Section 8 word-count conventions; do not apply this limit to procedural text, which
+    has a separate threshold. The supplied Issue 9 PDF includes Part 2's controlled dictionary,
+    but this catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The controller records the room temperature, sends the reading to the display, stores
+      a copy in memory, and updates the maintenance log after each routine measurement is complete.
+    after: The controller records the room temperature. It sends the reading to the display and
+      stores a copy in memory.
+    explanation: >-
+      Count descriptive sentences with Section 8 conventions and split only if each new sentence
+      preserves the stated facts.
+- code: STE604
+  name: Related paragraph structure
+  engine: llm
+  scope: section
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 6.4 (page 1-6-5). Use paragraph breaks to group related descriptive
+    information and show its sequence. An opening topic sentence can orient the reader before
+    details; do not split lists, tables, or other structured material as if they were prose paragraphs.
+    The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not
+    ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: A paragraph begins with sensor operation, then shifts without transition to access-badge
+      replacement.
+    after: Keep the sensor description together. Start a separate paragraph for access-badge replacement.
+    explanation: >-
+      Choose a break where the subject changes; preserve supporting details that belong to the
+      original topic.
+- code: STE605
+  name: One topic per paragraph
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 6.5 (page 1-6-6). Keep a descriptive paragraph focused on
+    one topic. Its opening sentence should identify the topic and connect new information to the
+    preceding text; following sentences develop that topic. The supplied Issue 9 PDF includes
+    Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The meter records humidity. Its display uses three zones. Access badges must be returned
+      at shift end.
+    after: 'The meter records humidity. Its display uses three zones.
+
+
+      Return access badges at shift end.'
+    explanation: >-
+      The last sentence changes the subject; retain it in the paragraph if the surrounding document
+      supplies a clear relationship.
+- code: STE606
+  name: Paragraph sentence maximum
+  engine: deterministic
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  description: >-
+    ASD-STE100 Issue 9, Part 1, Rule 6.6 (page 1-6-7). Keep a paragraph to no more than six sentences.
+    Flag only a paragraph with seven or more; choose a split that preserves topic unity and respects
+    abbreviations, lists, and structured content. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  detector:
+    kind: sentence_count
+    max_sentences: 6
+    skip_markdown_tables: true
+  examples:
+  - before: The case stores the adapter. It has a hinged lid. The hinge allows full opening. A
+      seal reduces dust. Two clips hold the lid. The label shows the model. The label also gives
+      the batch code.
+    after: 'The case stores the adapter. It has a hinged lid. The hinge allows full opening. A
+      seal reduces dust. Two clips hold the lid.
+
+
+      The label shows the model. The label also gives the batch code.'
+    explanation: >-
+      Six sentences are allowed; a seventh exceeds the cap, but the paragraph break still needs
+      to respect the topic.
+- code: STE701
+  name: Safety risk signal
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 7.1 (page 1-7-2). Identify the risk level of a safety instruction
+    promptly with the signal word or symbol required by the governing safety and publication standards.
+    Risk classification requires a technical risk assessment. The supplied Issue 9 PDF includes
+    Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: 'CAUTION: Isolate the supply before opening the enclosure. Unexpected energization
+      can injure the operator.'
+    after: 'WARNING: Isolate the supply before opening the enclosure. Unexpected energization
+      can injure the operator.'
+    explanation: >-
+      The label depends on the approved risk assessment; never down-classify a risk to fit a text
+      rule or guess from wording alone.
+- code: STE702
+  name: Safety instruction lead
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 7.2 (page 1-7-3). Begin a safety instruction with an accurate
+    command or with a condition the reader must know before acting. Keep any condition that must
+    precede the work step in that position. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: 'WARNING: The enclosure presents an electrical hazard. Isolate its power before opening
+      it.'
+    after: 'WARNING: Before opening the enclosure, isolate its power source.'
+    explanation: >-
+      Use the condition-first form only when supported by the safe procedure; do not invent or
+      reorder a critical condition.
+- code: STE703
+  name: Safety consequence
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 7.3 (page 1-7-4). Where feasible, explain the credible harm
+    or result that may occur if the safety instruction is not followed. Use the approved risk
+    assessment; do not fabricate a hazard or consequence. The supplied Issue 9 PDF includes Part
+    2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: 'WARNING: Keep clear of the moving carriage. This is important.'
+    after: 'WARNING: Keep clear of the moving carriage. It can strike a person during travel.'
+    explanation: >-
+      Include a consequence only when the technical risk assessment supports it; a generic emphasis
+      sentence is not an explanation.
+- code: STE801
+  name: Semicolon punctuation
+  engine: deterministic
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  description: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.1 (page 1-8-1–1-8-2). Use standard English punctuation
+    except for the semicolon, which is not permitted in editable STE prose. Preserve fixed quotations,
+    labels, titles, and other immutable text. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  detector:
+    kind: regex
+    pattern: ;
+    flags: []
+    target: unit
+    message: A semicolon is not permitted in editable STE prose.
+    fix: Replace the semicolon with punctuation that preserves the intended meaning.
+  examples:
+  - before: Inspect the removed parts; replace damaged items.
+    after: Inspect the removed parts. Replace damaged items.
+    explanation: >-
+      A semicolon is directly detectable in visible prose; preserve protected source text and
+      use a sentence boundary only when the meaning supports it.
+- code: STE802
+  name: Hyphenated compounds
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.2 (page 1-8-2). Use a hyphen where it accurately connects
+    words or word parts that function together. Do not join unrelated words or alter an official
+    term; distinguish hyphens from dashes. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Install the low speed sensor.
+    after: Install the low-speed sensor.
+    explanation: >-
+      Hyphenate only if low-speed is the intended unit and matches the approved technical term.
+- code: STE803
+  name: Parenthetical uses
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.3 (page 1-8-3–1-8-4). Use parentheses for supported functions
+    such as references, identifiers, work-step labels, abbreviations, singular/plural forms, explanations,
+    or alternatives. Preserve exact technical identifiers and official text. The supplied Issue
+    9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: The controller shows (very important) the measured value.
+    after: The controller shows the measured value.
+    explanation: >-
+      Parentheses are useful for specified references and explanations, not as a detached emphasis
+      device.
+- code: STE804
+  name: Vertical-list word counting
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.4 (page 1-8-4). For word-count limits, treat the colon
+    before a vertical list as the end of its lead-in sentence and count each following list item
+    as a new sentence. Apply the procedural or descriptive limit to each part. The supplied Issue
+    9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: Count a vertical-list introduction and its items as one sentence.
+    after: Count the introduction and each vertical-list item separately.
+    explanation: >-
+      The colon ends the lead-in sentence; every item is a separate sentence for the relevant
+      limit.
+- code: STE805
+  name: Parenthetical word counting
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.5 (page 1-8-5). Count parenthetical text as one word in
+    the containing sentence. If it is itself a sentence, count that separately; do not count its
+    internal words again in the outer sentence. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Check the seal (before startup) for damage.
+    after: Check the seal before startup for damage.
+    explanation: >-
+      The parenthetical span counts as one outer-sentence word; its own sentence, if any, has
+      a separate count.
+- code: STE806
+  name: Special word-count units
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.6 (page 1-8-5–1-8-8). For sentence-length counts, treat
+    numbers, number-plus-unit expressions, abbreviations, alphanumeric identifiers, quoted spans,
+    titles/headings/label text, and covered proper nouns as one word each. Exclude paragraph and
+    step numbers used only as numbering. The supplied Issue 9 PDF includes Part 2's controlled
+    dictionary, but this catalog does not ingest its entries or project terminology. Use the authorized,
+    applicable vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Check 24 V at connector J14 before the North Wing Service Display is reset.
+    after: Check 24 volts at connector J14 before the North Wing Service Display is reset.
+    explanation: >-
+      The number with its unit, identifier, title, and proper name each count as one word; retain
+      their exact technical content.
+- code: STE807
+  name: Hyphenated word counting
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 8.7 (page 1-8-8). Count a hyphenated word as one word. This
+    counting convention does not decide whether the term should be hyphenated; preserve approved
+    spelling and distinguish dashes. The supplied Issue 9 PDF includes Part 2's controlled dictionary,
+    but this catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Count two-piece as two words.
+    after: Count two-piece as one word.
+    explanation: >-
+      The hyphenated token counts as one word; this convention does not determine whether the
+      term should use a hyphen.
+- code: STE901
+  name: Meaning-preserving recast
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 9.1 (page 1-9-1–1-9-4). If a word-for-word replacement is
+    unavailable or changes meaning, recast the sentence with approved words and grammar while
+    preserving its intended information. Ask for the missing meaning rather than guessing. The
+    supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest
+    its entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: The access code is unacceptable.
+    after: The system does not accept the access code.
+    explanation: >-
+      The recast is valid only if the system's behavior is the intended meaning; do not select
+      a superficially similar but incorrect alternative.
+- code: STE902
+  name: Word meaning and role
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 9.2 (page 1-9-5–1-9-6). Use each approved word with the dictionary
+    meaning and part of speech that fit the context. Check restricted senses and roles against
+    the authorized entry; a spelling match does not establish correct use. The supplied Issue
+    9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its entries
+    or project terminology. Use the authorized, applicable vocabulary when it determines review;
+    do not guess or certify technical facts.
+  examples:
+  - before: Use wear to mean that the bearing loses material through friction.
+    after: Use the specified verb for material loss through friction.
+    explanation: >-
+      The word's permitted role and sense require the official entry; preserve a known technical
+      meaning rather than substituting by guess.
+- code: STE903
+  name: Phrasal-verb meaning
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 9.3 (page 1-9-7). Do not combine words into a phrasal verb
+    whose meaning differs from the authorized meanings of its parts, unless that phrasal use is
+    explicitly approved. Literal combinations and approved restricted uses are not violations.
+    The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not
+    ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: After you put out the fire, close the valve.
+    after: After you extinguish the fire, close the valve.
+    explanation: >-
+      Use extinguish only if it is authorized and preserves the required action; check whether
+      the original phrase is literal or approved.
+- code: STE904
+  name: Consistent wording
+  engine: llm
+  scope: document
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, Rule 9.4 (page 1-9-8). Use the same terminology and phrasing for
+    repeated items or actions when their context and meaning are the same. Preserve different
+    wording when it represents a real technical distinction or changed condition. The supplied
+    Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest its
+    entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: Lubricate the fasteners with oil. Apply oil to the bolt threads.
+    after: Lubricate the fasteners with oil. Lubricate the bolt threads with oil.
+    explanation: >-
+      Standardize only if the phrases describe the same action and scope; the second may refer
+      to a more specific surface.
+- code: STEGR1
+  name: That for clause clarity
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-1 (page 1-9-9). Consider including the conjunction that when
+    it makes a subordinate-clause boundary easier to follow or supports translation. This is a
+    recommendation, not a blanket insertion requirement. This is a recommendation, not a mandatory
+    rule. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does
+    not ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: The display confirms the cycle is complete after the controller reports the result.
+    after: The display confirms that the cycle is complete after the controller reports the result.
+    explanation: >-
+      Add that only if it clarifies the intended clause and does not make the sentence ungrammatical
+      or change its reading.
+- code: STEGR2
+  name: Ambiguous with
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-2 (page 1-9-10). Review with for ambiguity between association,
+    accompaniment, assistance, or means. Recast only when context leaves the intended relation
+    unclear, and preserve the main action. This is a recommendation, not a mandatory rule. The
+    supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does not ingest
+    its entries or project terminology. Use the authorized, applicable vocabulary when it determines
+    review; do not guess or certify technical facts.
+  examples:
+  - before: Attach the panel with the silver clips.
+    after: Attach the panel using the two silver clips.
+    explanation: >-
+      The rewrite selects an instrument reading; confirm that the clips are the means of attachment
+      rather than a feature of the panel.
+- code: STEGR3
+  name: Pronoun reference
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-3 (page 1-9-11). Use pronouns allowed by the applicable dictionary
+    and replace one whose possible antecedents make the intended reference unclear. Confirm authorization
+    and referent rather than banning a pronoun by form alone. This is a recommendation, not a
+    mandatory rule. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this
+    catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Align the guide with the rail. It must remain level.
+    after: Align the guide with the rail. The rail must remain level.
+    explanation: >-
+      Name the intended referent only after checking which item must remain level and the approved
+      pronoun inventory.
+- code: STEGR4
+  name: Referent of this
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-4 (page 1-9-11). Make the referent of this clear. Restate the
+    relevant item, event, or condition when more than one interpretation is plausible; do not
+    invent a cause. This is a recommendation, not a mandatory rule. The supplied Issue 9 PDF includes
+    Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: Open the lid beside the sensor. This can cause a fault.
+    after: Open the lid beside the sensor. An open lid can cause a sensor fault.
+    explanation: >-
+      The explicit cause must be verified; retain the original wording if context shows another
+      intended referent.
+- code: STEGR5
+  name: False-friend review
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-5 (page 1-9-12). For readers working across languages, check
+    that a word has its intended English sense rather than a similar-looking word's meaning in
+    another language. Ask for language and meaning context; do not infer an error from unfamiliar
+    wording. This is a recommendation, not a mandatory rule. The supplied Issue 9 PDF includes
+    Part 2's controlled dictionary, but this catalog does not ingest its entries or project terminology.
+    Use the authorized, applicable vocabulary when it determines review; do not guess or certify
+    technical facts.
+  examples:
+  - before: The vendor's disposition is attached to the work order.
+    after: The vendor's instructions are attached to the work order.
+    explanation: >-
+      The replacement is correct only if disposition was intended to mean instructions; check
+      the source-language context first.
+- code: STEGR6
+  name: Latin abbreviation alternatives
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-6 (page 1-9-12). Consider replacing Latin abbreviations such
+    as e.g., i.e., or etc. with clear English words when readers may not know them. This is a
+    recommendation; retain necessary, official, or protected forms. This is a recommendation,
+    not a mandatory rule. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but
+    this catalog does not ingest its entries or project terminology. Use the authorized, applicable
+    vocabulary when it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Inspect the connectors, e.g., the blue and green leads.
+    after: Inspect the connectors, for example, the blue and green leads.
+    explanation: >-
+      Expand only when the English wording preserves the intended relationship and helps this
+      audience.
+- code: STEGR7
+  name: Inclusive wording
+  engine: llm
+  scope: paragraph
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-7 (page 1-9-13). Prefer neutral, non-discriminatory wording
+    and gender-neutral language in ordinary technical prose. Review known gendered terms in context;
+    follow applicable organizational and official guidance. This is a recommendation, not a mandatory
+    rule. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does
+    not ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Each technician must return his access card to the supervisor.
+    after: Each technician must return the access card to the supervisor.
+    explanation: >-
+      Use neutral wording when it preserves the intended referent; retain gender-specific language
+      when a necessary, supported context requires it.
+- code: STEGR8
+  name: Possessive form
+  engine: llm
+  scope: sentence
+  source: https://www.asd-europe.org/standards-specifications/simplified-technical-english/
+  prompt: >-
+    ASD-STE100 Issue 9, Part 1, GR-8 (page 1-9-13). The possessive apostrophe form is permitted,
+    but use it correctly. When its ownership or association is unclear, choose an explicit alternative
+    only if it preserves the intended relationship. This is a recommendation, not a mandatory
+    rule. The supplied Issue 9 PDF includes Part 2's controlled dictionary, but this catalog does
+    not ingest its entries or project terminology. Use the authorized, applicable vocabulary when
+    it determines review; do not guess or certify technical facts.
+  examples:
+  - before: Return the inspectors key to the desk.
+    after: Return the inspector's key to the desk.
+    explanation: >-
+      The apostrophe changes singular/plural ownership; confirm which inspector or inspectors
+      own the key before editing.
