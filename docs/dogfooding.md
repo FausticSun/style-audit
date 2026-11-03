@@ -45,7 +45,7 @@ printf '%s\n' '# We utilize comments.' '"""A robust parser."""' 'VALUE = "foster
 
 Expect `NAS001` for the docstring's term at line 2, column 6, with exit `1`. Replacing only the docstring with `"""An integer parser."""` should produce no findings and exit `0`. Leave the comment and assigned string unchanged to check exclusion. Invalid Python must fail with exit `2`, not an empty successful audit.
 
-Local checks make no provider calls. For optional editorial review, explicitly select LLM rules and a LiteLLM model, for example `--select NAS00,RDL --model openai/gpt-4o-mini`. Remote requests contain only the current docstring unit's masked prose, never surrounding code or comments. Private prose written in a docstring is still eligible for transmission. Review [Python scope and privacy](llm.md#python-docstrings) before enabling that run.
+Local checks make no provider calls. For optional editorial review, select LLM rules; the default model is `openrouter/openrouter/free` and uses `OPENROUTER_API_KEY`. Remote requests contain only the current docstring unit's masked prose, never surrounding code or comments. Private prose written in a docstring is still eligible for transmission. Review [Python scope and privacy](llm.md#python-docstrings) before enabling that run.
 
 ### Observed own-code audit
 
@@ -63,10 +63,10 @@ Run the deterministic patterns locally, then explicitly opt into both requested 
 
 ```sh
 uv run style-audit notebooks/system_design.py --select NAS00,STE606,STE801 --format json
-uv run style-audit notebooks/system_design.py --select NAS,RDL --model openai/gpt-4o-mini --format json
+uv run style-audit notebooks/system_design.py --select NAS,RDL --format json
 ```
 
-Before the second command, set `OPENAI_API_KEY` in the environment for this example model. Other LiteLLM models use their provider's standard credentials; see the [configuration guide](configuration.md#litellm-transport-settings) for optional transport settings. The CLI discovers the nearest project `pyproject.toml`, so no `--config` flag is needed. Keep credentials in a secret store or environment variable, never in TOML.
+Before the second command, set `OPENROUTER_API_KEY` in the environment for the default model. Override it with `--model` to select another LiteLLM provider/model. The CLI discovers the nearest project `pyproject.toml`, so no `--config` flag is needed. Keep credentials in a secret store or environment variable, never in TOML.
 
 
 ## Audit the generated rule catalog
@@ -94,7 +94,7 @@ uv run python -c 'from style_audit.rules import RULES_BY_CODE; print(RULES_BY_CO
 uv run python -c 'from style_audit.rules import RULES_BY_CODE; print(RULES_BY_CODE["NAS001"].examples[0].after)' | uv run style-audit - --stdin-filename NAS001-after.md --select NAS001 --format json
 ```
 
-Expect status `1` with a `NAS001` finding for the first command and status `0` for the second. Substitute another ID to exercise its pair. For an LLM rule, also provide a LiteLLM `provider/model`, such as `openai/gpt-4o-mini`. Preserve each sample's Markdown and paragraph breaks so the rule sees its registered scope. The explanation states the author's intended context. The raw sample alone may not contain that context.
+Expect status `1` with a `NAS001` finding for the first command and status `0` for the second. Substitute another ID to exercise its pair. LLM rules use `openrouter/openrouter/free` unless overridden; set `OPENROUTER_API_KEY` for remote review. Preserve each sample's Markdown and paragraph breaks so the rule sees its registered scope. The explanation states the author's intended context. The raw sample alone may not contain that context.
 
 Before/after pairs are editorial demonstrations, not guaranteed model classifications. Review a missed before sample or a flagged revision against the rule and its contextual exception. Record the outcome rather than inventing facts or treating a clean documentation audit as detection accuracy. The examples do not change judge prompts.
 
@@ -130,10 +130,10 @@ The following deterministic runs were observed during the earlier documentation 
 
 ## Review with LiteLLM
 
-For optional editorial review, select LLM rules and provide a model using LiteLLM's `provider/model` syntax. For example, `openai/gpt-4o-mini` uses `OPENAI_API_KEY`; use the selected provider's standard credentials for other models. Keep credentials out of the repository and project TOML.
+For optional editorial review, select LLM rules. The default model `openrouter/openrouter/free` uses `OPENROUTER_API_KEY`; override it with `--model` to use another LiteLLM `provider/model`. Keep credentials out of the repository and project TOML.
 
 ```sh
-uv run --group docs style-audit README.md docs/ --select NAS1 --model openai/gpt-4o-mini --format json
+uv run --group docs style-audit README.md docs/ --select NAS1 --format json
 ```
 
 `NAS1` selects only the no-ai-slop LLM rules. It does not include the separate `RDL` readability ruleset. Use `--select RDL` for readability alone or `--select NAS1,RDL` for both.
@@ -142,8 +142,8 @@ To include generated rule descriptions, pass their rendered Markdown separately:
 
 ```sh
 set -o pipefail
-uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("NAS"))' | uv run --group docs style-audit - --stdin-filename docs/reference/no-ai-slop.md --select NAS1,RDL --model openai/gpt-4o-mini --format json
-uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("RDL"))' | uv run --group docs style-audit - --stdin-filename docs/reference/readability.md --select NAS1,RDL --model openai/gpt-4o-mini --format json
+uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("NAS"))' | uv run --group docs style-audit - --stdin-filename docs/reference/no-ai-slop.md --select NAS1,RDL --format json
+uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("RDL"))' | uv run --group docs style-audit - --stdin-filename docs/reference/readability.md --select NAS1,RDL --format json
 ```
 
 Check renderer success and non-empty input as in the local workflow. Requests are grouped by canonical scope and contain only each unit's masked text and matching-scope rules. Masking preserves units but is not sensitive-data redaction. Default completion findings require exact contiguous visible quotes; Decisions findings use the whole visible scope unit with a score and threshold. Review findings in context and preserve author voice. See [LLM review and privacy](llm.md) for request boundaries, validation, and failures.

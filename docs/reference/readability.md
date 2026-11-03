@@ -1,6 +1,6 @@
 # Readability
 
-`RDL` reviews interpretation difficulty in English sentences, not AI authorship or a readability score. All its rules use sentence-scoped LLM judgments. Review requires an explicit model. The [source and measurement limitations](#source-and-measurements) distinguish these editorial judgments from the paper's corpus statistics.
+`RDL` reviews interpretation difficulty in English sentences, not AI authorship or a readability score. All its rules use sentence-scoped LLM judgments. With the default chat-completion API, review uses `openrouter/openrouter/free` and requires the OpenRouter credential; override the model as needed. Decisions mode requires a model supported by the provider. The [source and measurement limitations](#source-and-measurements) distinguish these editorial judgments from the paper's corpus statistics.
 
 <!-- generated-rule-cards:start -->
 
@@ -254,11 +254,11 @@ The financial word combination supplies no reconstructable mechanism. Keep the o
 
 ## Usage
 
-All readability rules use the LLM engine and sentence scope. They share one request per eligible sentence, using the existing masking, provider opt-in, and evidence validation. No parser model or reference corpus is downloaded. Plain local checks remain local. Selecting `RDL` explicitly opts into judging and requires an explicit model.
+All readability rules use the LLM engine and sentence scope. They share one request per eligible sentence, using existing masking, provider opt-in, and evidence validation. No parser model or reference corpus is downloaded. Plain local checks remain local. Selecting `RDL` explicitly opts into judging; chat completions use the default model unless overridden, while Decisions requires an explicit provider-supported model.
 
 ```sh
-style-audit draft.md --select RDL --model openai/gpt-4o-mini
-style-audit draft.md --select NAS00,RDL --model openai/gpt-4o-mini
+style-audit draft.md --select RDL --model openrouter/openrouter/free
+style-audit draft.md --select NAS00,RDL --model openrouter/openrouter/free
 ```
 
 Project configuration:
@@ -270,7 +270,7 @@ output = "json"
 
 [tool.style-audit.llm]
 enabled = true
-model = "openai/gpt-4o-mini"
+model = "openrouter/openrouter/free"
 ```
 
 `RDL` uses sentence-scoped LLM judgments with either LiteLLM chat completions or its provider-neutral Decisions API, as selected in [configuration](../configuration.md#settings). Completion returns validated structured findings; Decisions returns sentence-level probability findings at the configured threshold. See [LLM review and privacy](../llm.md) for request boundaries and evidence limits.

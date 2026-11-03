@@ -4,7 +4,7 @@ LLM rules are subjective editorial judgments—not an AI-authorship detector. De
 
 ## Default Markdown review
 
-When no global selection or matching per-file selection overrides it, an `.md` input uses `NAS` and `RDL`. This is a rule-selection default only: no model is chosen and no content is sent remotely unless judging is separately enabled. Opt in with `[tool.style-audit.llm].enabled = true` plus a configured model, `--llm` plus a model, `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules opts that file in. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default selection applies only to `.md`, not `.markdown`, `.rst`, `.txt`, Python, or Gherkin inputs.
+When no global selection or matching per-file selection overrides it, an `.md` input uses `NAS` and `RDL`. This is a rule-selection default only: for `api = "completion"`, the model defaults to `openrouter/openrouter/free`, but no content is sent remotely unless judging is separately enabled. `api = "decisions"` requires an explicitly selected provider-supported model. Opt in with `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file entry that selects LLM rules. A configured `model` or `--model` overrides the completion default. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default selection applies only to `.md`, not `.markdown`, `.rst`, `.txt`, Python, or Gherkin inputs.
 
 The default selection alone causes no remote request or charge. Once enabled, review sends visible prose and the selected rules' guidance and examples to the configured provider and may incur charges. Masking is not sensitive-data redaction; see [what the request contains](#what-the-request-contains).
 
@@ -16,32 +16,29 @@ select = ["NAS001", "NAS106"]
 
 [tool.style-audit.llm]
 enabled = true
-model = "openai/gpt-4o-mini"
+model = "openrouter/openrouter/free"
 ```
 
 Or enable one invocation:
 
 ```sh
-style-audit --llm --model openai/gpt-4o-mini draft.md
-style-audit --select NAS106 --model openai/gpt-4o-mini draft.md
+style-audit --llm --model openrouter/openrouter/free draft.md
+style-audit --select NAS106 --model openrouter/openrouter/free draft.md
 ```
 
 [Per-file selections](configuration.md#per-file-rule-selection) can enable editorial rules only for matching paths. A matching entry that explicitly selects an LLM rule opts into that file's review, and the same entry does not enable review of unmatched files.
 
-No model is supplied automatically. LLM judging requires a configured or command-line model. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
+When `model` is omitted, style-audit uses `openrouter/openrouter/free` for chat completions. With `api = "decisions"`, there is no default model: set a model supported by the provider's Decisions endpoint in TOML or with `--model`. Model selection alone does not activate remote calls. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
 
-LLM models use LiteLLM's `provider/model` syntax and standard provider credentials. For example, `openai/gpt-4o-mini` uses `OPENAI_API_KEY`; use the provider's documented credential variable for other models.
+The default chat-completion model uses OpenRouter's `OPENROUTER_API_KEY`; Decisions mode uses the selected decision model's standard credential variable. Do not put raw API keys in TOML. The optional `api_key_env` setting names an environment variable, not its secret value. See [configuration](configuration.md#litellm-transport-settings) for supported transport settings.
 
-
-Do not put raw API keys in TOML. The optional `api_key_env` setting names an environment variable, not its secret value. See [configuration](configuration.md#litellm-transport-settings) for supported transport settings.
-
-Chat-completion judging remains the default and returns validated quotes, reasons, and optional fixes. Set `[tool.style-audit.llm].api = "decisions"` to use LiteLLM's provider-neutral Decisions API instead; `threshold` defaults to `0.82`. The model name still uses LiteLLM's `provider/model` syntax, and LiteLLM handles provider routing for both APIs without provider-specific style-audit branches.
+Chat-completion judging is the default and returns validated quotes, reasons, and optional fixes. `api = "decisions"` uses LiteLLM's Decisions API and returns predicate probabilities; it requires a model supported by that endpoint. OpenRouter's Decisions API supports TypeSafe Jev models such as `openrouter/typesafe/jev-1.14`, not the `openrouter/openrouter/free` chat route. Jev calls may require OpenRouter credits. See [LiteLLM's OpenRouter Decisions documentation](https://docs.litellm.ai/docs/providers/openrouter#decisions-jev).
 
 ```sh
-style-audit --select NAS106 --model openai/gpt-4o-mini draft.md
+style-audit --select NAS106 --model openrouter/openrouter/free draft.md
 ```
 
-A model in configuration by itself does not enable global remote calls. Default `.md` inputs select `NAS` and `RDL`, but that selection does not send text remotely. Judging requires selected LLM rules plus an opt-in through `llm.enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file selection. With configured selection, only retained rules are eligible. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`.
+With `api = "completion"`, the default model is used unless overridden. Decisions mode requires a provider-supported model in configuration or `--model`. A model in configuration by itself does not enable remote calls. Default `.md` inputs select `NAS` and `RDL`, but that selection alone does not send text remotely. Judging requires selected LLM rules plus an opt-in through `llm.enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file selection. With configured selection, only retained rules are eligible. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`.
 
 ## What the request contains
 
@@ -90,7 +87,7 @@ The application rejects malformed JSON, unknown, disabled, or wrong-scope IDs, i
 
 ### Decisions judging
 
-Set `api = "decisions"` in `[tool.style-audit.llm]` to use `litellm.decisions` with the OpenAI Decisions request shape. Each enabled rule becomes a named `predicate` question; LiteLLM translates it for supported providers. No model-prefix checks or provider-specific adapters are used by style-audit.
+Set `api = "decisions"` in `[tool.style-audit.llm]` to use `litellm.decisions` with the OpenAI Decisions request shape. Each enabled rule becomes a named `predicate` question; LiteLLM translates it for supported providers. Style-audit does not validate provider/model compatibility; choose a model accepted by that provider's Decisions endpoint.
 
 The API returns probabilities, not evidence quotes or rationales. A finding is emitted when the rule's probability is greater than or equal to the configured finite `threshold` in `[0, 1]` (default `0.82`). Its evidence and source span cover the full visible logical unit; masked code and quotation spans remain spaces. The diagnostic message combines the rule description and probability, and it has no generated fix. This is deliberately coarser than completion mode's exact quoted evidence.
 

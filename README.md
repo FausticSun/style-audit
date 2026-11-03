@@ -70,17 +70,17 @@ Apply different rules by file pattern with `[tool.style-audit.per-file-select]`,
 
 See the [configuration guide](docs/configuration.md), [CLI reference](docs/reference/cli.md), and [LLM privacy guide](docs/llm.md) for selection precedence, models, and provider behavior. An LLM opt-in never overrides a deterministic-only selection.
 
-Default `.md` audits select no-ai-slop (`NAS`) and readability (`RDL`) rules. This selects checks; LLM judging remains opt-in, so a normal Markdown scan does not send text remotely. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. To use LLM rules, provide a LiteLLM `provider/model` and opt in with `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, or explicit LLM-rule selection. Remote review may incur charges.
+Default `.md` audits select no-ai-slop (`NAS`) and readability (`RDL`) rules. This selects checks; LLM judging remains opt-in, so a normal Markdown scan does not send text remotely. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default chat-completion model is `openrouter/openrouter/free` and uses `OPENROUTER_API_KEY`.
 
 Example configuration:
 
 ```toml
 [tool.style-audit.llm]
 enabled = true
-model = "openai/gpt-4o-mini"
+model = "openrouter/openrouter/free"
 ```
 
-Style-audit sends scoped chat-completion requests through LiteLLM. Configure credentials and any provider-specific transport settings using LiteLLM's standard conventions; style-audit validates the returned structure, rule IDs, and evidence.
+The Decisions API needs a provider-supported decision model. OpenRouter's endpoint supports TypeSafe Jev models such as `openrouter/typesafe/jev-1.14`, not the free-model chat route; Jev requests may require credits. See [configuration](docs/configuration.md) and [LLM review and privacy](docs/llm.md).
 
 Run a scoped review:
 
@@ -90,7 +90,7 @@ style-audit draft.md --select RDL
 
 The readability rules judge interpretation difficulty in English sentences, not AI authorship or a readability score. They preserve familiar constructions and do not pretend to measure n-gram frequency or dependency statistics without reference data. See the [readability guide](docs/reference/readability.md).
 
-LLM rules are grouped by registered scope and sent in one chat-completion request per eligible unit. The model returns structured findings with rule IDs, exact evidence, and reasons.
+By default, LLM rules are grouped by registered scope and sent in chat-completion requests with structured findings, exact evidence, and reasons. `api = "decisions"` instead sends provider-supported predicate questions and returns probabilities; see the [configuration guide](docs/configuration.md#settings) for model requirements.
 
 Remote review may incur charges. The selected scopes and their unit counts determine request volume. Masking preserves logical units but is not sensitive-data redaction. The [LLM guide](docs/llm.md) explains segmentation, privacy, validation, and limitations. The [dogfooding guide](docs/dogfooding.md) separates historical pre-scope observations, including an authentication failure, from current review evidence.
 

@@ -29,7 +29,7 @@ Each ordinary Python docstring becomes a separate logical document. Its Python s
 style-audit src/ tests/ --select NAS00
 style-audit module.py --select NAS00 --format json
 cat module.py | style-audit - --stdin-filename module.py --select NAS00
-style-audit module.py --select NAS00,RDL --model openai/gpt-4o-mini
+style-audit module.py --select NAS00,RDL --model openrouter/openrouter/free
 ```
 
 No new rule IDs or configuration toggle are needed. The same selection, ignores, LLM opt-in, and exit codes apply. Files without extracted prose produce no findings or provider requests. Source positions count original Unicode characters, and UTF-8 BOM and physical newlines are retained in the source mapping.
@@ -42,7 +42,7 @@ A `.py` file is treated as a Marimo app when it imports Marimo and constructs `A
 
 ```sh
 style-audit notebooks/system_design.py --select NAS00 --format json
-style-audit notebooks/system_design.py --select NAS,RDL --model openai/gpt-4o-mini
+style-audit notebooks/system_design.py --select NAS,RDL --model openrouter/openrouter/free
 ```
 
 Selecting LLM rules sends only the current extracted Markdown unit after normal code and quotation masking. Visible private prose remains eligible for transmission; extraction is not redaction.
@@ -67,7 +67,7 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 | `--ignore RULE[,RULE]` | Suppress IDs, prefixes, or globs and add them to configured `ignore`. Repeatable. |
 | `--format text\|json` | Override configured report format. |
 | `--llm` | Explicitly enable LLM rules among the currently selected rules. |
-| `--model MODEL` | Select a LiteLLM `provider/model` name and opt into judging selected LLM rules using the API configured in `[tool.style-audit.llm].api` (chat completions by default). |
+| `--model MODEL` | Override the configured LiteLLM `provider/model` and opt into judging selected LLM rules; `openrouter/openrouter/free` is the default for chat completions, while Decisions requires a provider-supported model. |
 | `--stdin-filename NAME` | Set the stdin path for per-file selection; `.py` selects Marimo Markdown cells or Python docstrings, `.pyi` selects docstrings, and `.feature` selects Gherkin processing. |
 | `--version` | Print the package version. |
 | `-h`, `--help` | Print help. |
@@ -76,7 +76,7 @@ IDs, prefixes, and filename-style rule globs are matched case-sensitively. `NAS`
 
 CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. Without a global selection or matching per-file entry, `.md` inputs default to `NAS` and `RDL`; other inputs select all catalogs. An empty per-file selection disables rules for matching files. See [per-file rule selection](../configuration.md#per-file-rule-selection).
 
-Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judging. LLM review requires selected LLM rules, a model, and an opt-in through `enabled = true`, explicit LLM selection, `--llm`, or `--model`. Supply the standard credentials required by the selected LiteLLM provider; for `openai/gpt-4o-mini`, set `OPENAI_API_KEY`. A deterministic-only effective selection does not start remote calls. See [LLM review and privacy](../llm.md).
+Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judging. LLM review requires selected LLM rules and an opt-in through `enabled = true`, explicit LLM selection, `--llm`, or `--model`. The model defaults to `openrouter/openrouter/free` for chat completions, which uses `OPENROUTER_API_KEY`; Decisions mode has no default and needs a provider-supported model. A deterministic-only effective selection does not start remote calls. See [LLM review and privacy](../llm.md).
 
 `STE` selects all 61 ASD-STE100 entries, including recommendations. `STE606` and `STE801` are the local paragraph-count and semicolon rules. Markdown table blocks are not paragraphs and do not count toward the STE606 six-sentence limit. STE801 still checks semicolons in table cells. Combine selectors with `--select NAS00,RDL,STE606,STE801`, or quote globs such as `--select 'NAS00?'` and `--ignore 'NAS00[23]'`. Every selector must match a registered rule.
 
@@ -84,7 +84,7 @@ Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judgi
 Example:
 
 ```sh
-style-audit draft.md --select NAS106 --model openai/gpt-4o-mini
+style-audit draft.md --select NAS106 --model openrouter/openrouter/free
 ```
 
 

@@ -12,12 +12,12 @@ Use the [generated-rule audit](../dogfooding.md#audit-the-generated-rule-catalog
 
 ## Selecting rulesets
 
-`NAS00` runs only local no-ai-slop checks. `STE606` checks the six-sentence maximum in prose paragraphs and skips Markdown tables. `STE801` flags semicolons in editable prose, including table cells. Other `STE` rules use contextual LLM judgments and require an explicit model. See [LLM review and privacy](../llm.md) and the [STE source limitations](technical-english.md#source-and-limitations).
+`NAS00` runs only local no-ai-slop checks. `STE606` checks the six-sentence maximum in prose paragraphs and skips Markdown tables. `STE801` flags semicolons in editable prose, including table cells. Other `STE` rules use contextual LLM judgments; the default chat-completion model is `openrouter/openrouter/free`. Selecting them opts into remote review. Decisions mode requires an explicit provider-supported model. See [LLM review and privacy](../llm.md) and the [STE source limitations](technical-english.md#source-and-limitations).
 
 ```sh
 style-audit draft.md --select NAS00
 style-audit draft.md --select STE606,STE801
-style-audit draft.md --select STE --model openai/gpt-4o-mini
+style-audit draft.md --select STE --model openrouter/openrouter/free
 ```
 
 See [selection and ignoring](../configuration.md#selection-ignoring-and-llm-opt-in) for exact IDs, prefixes, rule globs, and CLI precedence. [Per-file rule selection](../configuration.md#per-file-rule-selection) maps file patterns to rulesets in `pyproject.toml`.

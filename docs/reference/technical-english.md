@@ -2174,10 +2174,10 @@ Use deterministic checks without a provider:
 style-audit draft.md --select STE606,STE801
 ```
 
-`STE606` reports paragraphs with more than six sentences. `STE801` reports semicolons in visible prose while leaving masked quotations and code untouched. All other `STE` entries use contextual LLM review. Selecting one explicitly requires a model:
+`STE606` reports paragraphs with more than six sentences. `STE801` reports semicolons in visible prose while leaving masked quotations and code untouched. All other `STE` entries use contextual LLM review. Selecting one explicitly opts into review; chat completions use `openrouter/openrouter/free` unless overridden, while Decisions requires an explicit provider-supported model:
 
 ```sh
-style-audit draft.md --select STE --model openai/gpt-4o-mini
+style-audit draft.md --select STE --model openrouter/openrouter/free
 ```
 
 See [configuration](../configuration.md#selection-ignoring-and-llm-opt-in) for prefix and glob selection, ignore precedence, and per-file opt-in. Review calls send the selected scoped text to the configured provider. Masking is not sensitive-data redaction. The [LLM guide](../llm.md) describes request boundaries, validation, and privacy.

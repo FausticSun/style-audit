@@ -14,7 +14,7 @@ output = "text"
 
 [tool.style-audit.llm]
 enabled = false
-model = "openai/gpt-4o-mini"
+model = "openrouter/openrouter/free"
 ```
 
 All settings are optional. Directory scanning defaults to `*.md`, `*.markdown`, `*.rst`, `*.txt`, `*.feature`, `*.py`, and `*.pyi`. Ordinary Python files audit docstrings; recognized Marimo `.py` apps audit direct Markdown cell literals.
@@ -29,20 +29,20 @@ The `llm` table accepts:
 | Setting | Type and default | Effect |
 | --- | --- | --- |
 | `enabled` | Boolean, default `false` | Opts selected LLM rules into judging; it never adds rules to the effective selection. |
-| `model` | Optional non-empty string, no default | LiteLLM `provider/model` name for the selected API; required for LLM judging. A configured model alone does not enable global judging. |
+| `model` | Optional non-empty string; defaults to `openrouter/openrouter/free` for `completion`, with no default for `decisions` | LiteLLM `provider/model` name. Decisions mode needs a provider-supported model; configure it here or with `--model`. A model never enables global judging by itself. |
 | `api` | `completion` or `decisions`, default `completion` | Selects LiteLLM chat completions with quoted findings, or the provider-neutral Decisions API with probability findings. |
 | `threshold` | Finite number in `[0, 1]`, default `0.82` | Decisions mode only; emits findings when the returned predicate probability is at least this value. |
 
-Use LiteLLM's standard `provider/model` syntax. For example, `openai/gpt-4o-mini` uses the provider's `OPENAI_API_KEY` credential by default. `api_key_env` can name another environment variable when required. Never put raw credentials in project TOML.
+For chat-completion judging, the default `openrouter/openrouter/free` model uses OpenRouter's `OPENROUTER_API_KEY`; set it in the environment. This free-model route does not support OpenRouter's Decisions API. Decisions mode requires a model supported by the selected provider's Decisions endpoint. Never put raw credentials in project TOML.
 
-LLM judging is off by default, including when the default Markdown selection contains RDL rules. A configured model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true` (with a model), `--llm` or `--model`, or an explicit LLM-rule selection with a model. A matching per-file entry that selects LLM rules also opts that file in. See [LLM review and privacy](llm.md) for request content and provider behavior.
+LLM judging is off by default, including when the default Markdown selection contains RDL rules. A model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true`, `--llm` or `--model`, explicit LLM-rule selection, or a matching per-file entry that selects LLM rules. A matching per-file entry opts only that file in. See [LLM review and privacy](llm.md) for request content and provider behavior.
 
-To use the Decisions API, configure the model, API, and probability threshold explicitly:
+To use the Decisions API, set `api = "decisions"`, provide a model supported by that provider's endpoint, and set the probability threshold. OpenRouter's Decisions API supports TypeSafe Jev models such as `openrouter/typesafe/jev-1.14`; the free-model router is not compatible. See [LiteLLM's OpenRouter Decisions documentation](https://docs.litellm.ai/docs/providers/openrouter#decisions-jev).
 
 ```toml
 [tool.style-audit.llm]
 enabled = true
-model = "typesafe/jev-latest"
+model = "openrouter/typesafe/jev-1.14"
 api = "decisions"
 threshold = 0.82
 ```
@@ -54,8 +54,7 @@ The optional `[tool.style-audit.llm.litellm]` table supplies transport settings 
 
 ```toml
 [tool.style-audit.llm.litellm]
-api_key_env = "OPENAI_API_KEY"
-custom_llm_provider = "openai"
+api_key_env = "OPENROUTER_API_KEY"
 timeout = 120
 temperature = 0
 ```
@@ -170,7 +169,7 @@ Without a non-empty `select`, `.md` inputs with no matching per-file entry defau
 
 `"RDL"` selects readability rules. `"STE"` selects all 61 ASD-STE100 rules and recommendations. `"STE606"` selects the local six-sentence paragraph check, and `"STE801"` selects the local semicolon check. Combine them, for example, with `select = ["NAS00", "RDL", "STE606", "STE801"]`.
 
-`*`, `?`, and bracket classes use Python `fnmatchcase` semantics. Entries without glob characters retain prefix matching. Matching is case-sensitive. Default `.md` selection does not enable remote review or choose a model; LLM rules require explicit opt-in and a model.
+Default `.md` selection does not enable remote review. For `api = "completion"`, the model defaults to `openrouter/openrouter/free`; Decisions mode has no model default and needs a provider-supported model when LLM rules are judged.
 
 LLM rules share one synchronous request per eligible unit and scope in completion mode. Decisions mode uses the same scope units and sends up to 128 predicate questions per request; larger scopes of selected rules are split into multiple requests. See [segmentation, privacy, and cost](llm.md#canonical-scopes-and-segmentation).
 
@@ -179,11 +178,11 @@ CLI `--select` replaces both configured `select` and per-file selections, while 
 ```sh
 style-audit --select NAS001,NAS003 draft.md
 style-audit --ignore NAS003 docs/
-style-audit --select NAS101 --model openai/gpt-4o-mini draft.md
-style-audit --select RDL --model openai/gpt-4o-mini draft.md
+style-audit --select NAS101 --model openrouter/openrouter/free draft.md
+style-audit --select RDL --model openrouter/openrouter/free draft.md
 ```
 
-LLM judging remains off by default, including for default `.md` selections. It requires selected LLM rules and an explicit opt-in: `[tool.style-audit.llm].enabled = true` (which requires a configured model), `--llm`, `--model`, or explicitly selecting an LLM rule. A matching per-file entry selecting LLM rules opts that file in. Explicit CLI/model/rule-selection opt-ins still take precedence over `enabled = false`. `--llm` does not broaden `select`; deterministic-only checks never send text remotely.
+LLM judging remains off by default, including for default `.md` selections. It requires selected LLM rules and an explicit opt-in: `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, or explicitly selecting an LLM rule. A matching per-file entry selecting LLM rules opts that file in. Explicit CLI/model/rule-selection opt-ins still take precedence over `enabled = false`. `--llm` does not broaden `select`; deterministic-only checks never send text remotely.
 
 `AuditConfig` and `load_config()` in `style_audit.config` implement these settings. The parser accepts only the documented setting types. A broken `pyproject.toml` is not silently ignored.
 
@@ -203,7 +202,7 @@ ignore = ["NAS003"]
 "generated/**" = []
 
 [tool.style-audit.llm]
-model = "openai/gpt-4o-mini"
+model = "openrouter/openrouter/free"
 ```
 
 File patterns match case-sensitive, slash-separated paths **relative to the directory containing the selected `pyproject.toml`**, not the invocation directory. Running from a nested directory or supplying `--config` preserves that root. Paths outside it contain `../` components. Both file and rule globs use Python `fnmatchcase`: `*` spans directory separators, so `"*.py"` matches Python files at any depth and `"docs/*.md"` includes nested Markdown files.

@@ -857,10 +857,10 @@ Run only the deterministic rules, without contacting a provider:
 style-audit draft.md --select NAS00
 ```
 
-To include the no-ai-slop LLM rules, select the ruleset and provide a model explicitly:
+To include the no-ai-slop LLM rules, opt in to chat-completion judging; `openrouter/openrouter/free` is its default model and can be overridden:
 
 ```sh
-style-audit draft.md --select NAS --model openai/gpt-4o-mini
+style-audit draft.md --select NAS --model openrouter/openrouter/free
 ```
 
 `NAS1` selects only its LLM rules. Combine rulesets with `--select NAS00,RDL` for local no-ai-slop checks plus [readability review](readability.md). See [selection and ignore precedence](../configuration.md#selection-ignoring-and-llm-opt-in), [LLM review and privacy](../llm.md), and the [ruleset overview](rules.md).

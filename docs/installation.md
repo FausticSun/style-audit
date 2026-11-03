@@ -92,12 +92,12 @@ Audit an existing source tree with `uv run style-audit src/`, or pipe Python cod
 
 ### Optional: enable LLM review
 
-Set up the credential required by the LiteLLM provider you choose. For example, the model `openai/gpt-4o-mini` uses `OPENAI_API_KEY` by default. Never put raw credentials in project TOML.
+The default chat-completion model is `openrouter/openrouter/free` and uses OpenRouter's `OPENROUTER_API_KEY`. Set that variable in the environment; override the model with another LiteLLM `provider/model` if needed. Decisions mode requires a model supported by its provider. Never put raw credentials in project TOML.
 
 This invocation opts into readability review:
 
 ```sh
-uv run style-audit draft.md --select NAS00,RDL --model openai/gpt-4o-mini
+uv run style-audit draft.md --select NAS00,RDL
 ```
 
 `--select` replaces the local-only configured selection. The command runs the local checks plus the LLM-based [readability rules](reference/readability.md). Use `--select NAS,RDL` to include no-ai-slop editorial judgments too. A model flag alone does not broaden a deterministic-only selection.
@@ -111,14 +111,14 @@ output = "text"
 
 [tool.style-audit.llm]
 enabled = true
-model = "openai/gpt-4o-mini"
+model = "openrouter/openrouter/free"
 
 [tool.style-audit.llm.litellm]
-api_key_env = "OPENAI_API_KEY"
-custom_llm_provider = "openai"
+api_key_env = "OPENROUTER_API_KEY"
+custom_llm_provider = "openrouter"
 ```
 
-Set `OPENAI_API_KEY` in the environment before running this example. The optional `[tool.style-audit.llm.litellm]` table can override the API base, API-key environment variable, provider, timeout, and temperature for other LiteLLM chat models; see [LiteLLM transport settings](configuration.md#litellm-transport-settings).
+Set `OPENROUTER_API_KEY` in the environment before running this example. The optional `[tool.style-audit.llm.litellm]` table can override the API base, API-key environment variable, provider, timeout, and temperature for other LiteLLM chat models; see [LiteLLM transport settings](configuration.md#litellm-transport-settings).
 
 Selected LLM rules send masked document units to the configured provider and can incur charges. Adding rule scopes can increase request volume.
 
