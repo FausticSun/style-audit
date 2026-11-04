@@ -50,7 +50,7 @@ The independent `RDL` [readability ruleset](reference/readability.md) uses sente
 
 `NAS`, `RDL`, and the contextual `STE` rules can be selected separately or combined. The [STE reference](reference/technical-english.md) distinguishes its two narrow local checks from rules that require contextual review. No extra parser, corpus, or language-model download is required.
 
-- **Sentence:** conservative punctuation-based segmentation, retaining unpunctuated tails and fragments and guarding common abbreviations, initialisms, and decimals. It is not a full linguistic parser.
+- **Sentence:** conservative punctuation-based segmentation, retaining unpunctuated tails and fragments and guarding common abbreviations, initialisms, and decimals. It is not a full linguistic parser. Leading and trailing Markdown table-cell pipes are trimmed, and delimiter-only fragments are skipped.
 - **Paragraph:** blank lines, Markdown headings, fenced code, and Markdown list-item starts create boundaries. Soft line wraps stay together.
 - **Section:** nonoverlapping Markdown heading-delimited spans. Each span ends at the next heading regardless of heading level. The preamble is a separate section. ATX and Setext headings count, but masked headings do not. Headingless text is one section.
 - **Document:** the complete prose input, or one Python docstring, is one unit.

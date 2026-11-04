@@ -128,6 +128,13 @@ class TextScopeTests(unittest.TestCase):
             [(1, 3, 1, 27), (2, 1, 3, 14), (5, 1, 5, 14)],
         )
 
+    def test_markdown_table_pipes_are_trimmed_from_sentence_units(self) -> None:
+        document = TextDocument(
+            path="draft.md",
+            text="| First sentence. | Second sentence? |",
+        )
+        self.assert_units(document, "sentence", ("First sentence.", "Second sentence?"))
+
     def test_soft_wrapped_sentences_and_deliberate_fragments_are_not_dropped(self) -> None:
         document = TextDocument(
             path="draft.md",

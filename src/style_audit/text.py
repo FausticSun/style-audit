@@ -156,6 +156,15 @@ class TextDocument(_FrozenTextModel):
         return tuple(span for start, end in zip(boundaries, boundaries[1:])
                      if (span := self._trim_span(start, end)) is not None)
 
+    def _trim_sentence_span(self, start: int, end: int) -> tuple[int, int] | None:
+        while start < end and (self.text[start].isspace() or self.visible_text[start] == "|"):
+            start += 1
+        while end > start and (self.text[end - 1].isspace() or self.visible_text[end - 1] == "|"):
+            end -= 1
+        if start == end or not self.visible_text[start:end].strip():
+            return None
+        return start, end
+
     @cached_property
     def _paragraph_spans(self) -> tuple[tuple[int, int], ...]:
         # Use original blank lines: a fully masked quotation is not a paragraph break.
@@ -193,10 +202,10 @@ class TextDocument(_FrozenTextModel):
             ])
             cursor = start
             for stop in sorted(set(stops)):
-                if (span := self._trim_span(cursor, stop)) is not None:
+                if (span := self._trim_sentence_span(cursor, stop)) is not None:
                     spans.append(span)
                     cursor = stop
-            if (span := self._trim_span(cursor, end)) is not None:
+            if (span := self._trim_sentence_span(cursor, end)) is not None:
                 spans.append(span)
         return tuple(spans)
 
