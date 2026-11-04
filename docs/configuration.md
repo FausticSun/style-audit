@@ -31,13 +31,13 @@ The `llm` table accepts:
 | `enabled` | Boolean, default `false` | Opts selected LLM rules into judging; it never adds rules to the effective selection. |
 | `model` | Optional non-empty string; defaults to `openrouter/openrouter/free` for `completion`, with no default for `decisions` | LiteLLM `provider/model` name. Decisions mode needs a provider-supported model; configure it here or with `--model`. A model never enables global judging by itself. |
 | `api` | `completion` or `decisions`, default `completion` | Selects LiteLLM chat completions with quoted findings, or the provider-neutral Decisions API with probability findings. |
-| `threshold` | Finite number in `[0, 1]`, default `0.82` | Decisions mode only; emits findings when the returned predicate probability is at least this value. |
+| `threshold` | Finite number in `[0, 1]`, default `0.82` | Decisions mode only; emits findings when the returned predicate probability is at least this value. CLI `--threshold` overrides it for one run. |
 
 For chat-completion judging, the default `openrouter/openrouter/free` model uses OpenRouter's `OPENROUTER_API_KEY`; set it in the environment. This free-model route does not support OpenRouter's Decisions API. Decisions mode requires a model supported by the selected provider's Decisions endpoint. Never put raw credentials in project TOML.
 
 LLM judging is off by default, including when the default Markdown selection contains RDL rules. A model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true`, `--llm` or `--model`, explicit LLM-rule selection, or a matching per-file entry that selects LLM rules. A matching per-file entry opts only that file in. See [LLM review and privacy](llm.md) for request content and provider behavior.
 
-To use the Decisions API, set `api = "decisions"`, provide a model supported by that provider's endpoint, and set the probability threshold. OpenRouter's Decisions API supports TypeSafe Jev models such as `openrouter/typesafe/jev-1.14`; the free-model router is not compatible. See [LiteLLM's OpenRouter Decisions documentation](https://docs.litellm.ai/docs/providers/openrouter#decisions-jev).
+To use the Decisions API, set `api = "decisions"`, provide a model supported by that provider's endpoint, and set the probability threshold. CLI `--threshold` overrides the configured value for one run. OpenRouter's Decisions API supports TypeSafe Jev models such as `openrouter/typesafe/jev-1.14`; the free-model router is not compatible. See [LiteLLM's OpenRouter Decisions documentation](https://docs.litellm.ai/docs/providers/openrouter#decisions-jev).
 
 ```toml
 [tool.style-audit.llm]
@@ -167,7 +167,7 @@ Without a non-empty `select`, `.md` inputs with no matching per-file entry defau
 
 `"NAS"` selects no-ai-slop rules. `"NAS1"` matches `NAS101`–`NAS121`. `"NAS00"` selects `NAS001`–`NAS003`. `"NAS00?"` selects the three local rules. `"NAS00[13]"` selects `NAS001` and `NAS003`.
 
-`"RDL"` selects readability rules. `"STE"` selects all 61 ASD-STE100 rules and recommendations. `"STE606"` selects the local six-sentence paragraph check, and `"STE801"` selects the local semicolon check. Combine them, for example, with `select = ["NAS00", "RDL", "STE606", "STE801"]`.
+`"RDL"` selects readability rules. `"STE"` selects all 61 ASD-STE100 rules and recommendations. `"MWG"` selects the general Microsoft Writing Style judgments. `"STE606"` selects the local six-sentence paragraph check, and `"STE801"` selects the local semicolon check. Combine them, for example, with `select = ["NAS00", "RDL", "STE606", "STE801", "MWG"]`.
 
 Default `.md` selection does not enable remote review. For `api = "completion"`, the model defaults to `openrouter/openrouter/free`; Decisions mode has no model default and needs a provider-supported model when LLM rules are judged.
 

@@ -222,6 +222,7 @@ _RULESET_CATALOGS = (
     "no-ai-slop.yaml",
     "readability.yaml",
     "technical-english.yaml",
+    "microsoft-writing.yaml",
 )
 
 

@@ -54,7 +54,7 @@ Marimo `.py` apps are parsed, not executed. When the source imports Marimo and c
 
 ## Rules and configuration
 
-Rule metadata lives in three packaged files under `src/style_audit/rules/`: `no-ai-slop.yaml` (`NAS`), `readability.yaml` (`RDL`), and `technical-english.yaml` (`STE`). LLM entries use a rule-specific `prompt` and canonical `scope`; deterministic entries declare regex detectors in YAML, with a typed sentence-count detector where regex would be inaccurate. `docs/render_rule_cards.py` generates one static reference page per ruleset from the canonical registry, and Zensical builds those pages. `NAS` selects no-ai-slop, `RDL` selects the paper-backed readability rules, and `STE` selects all 53 Issue 9 Part 1 writing rules plus eight general recommendations. The supplied Issue 9 PDF also contains Part 2's controlled dictionary, but the rule catalog does not parse its entries or certify vocabulary compliance.
+Rule metadata lives in four packaged YAML catalogs under `src/style_audit/rules/`: `no-ai-slop.yaml` (`NAS`), `readability.yaml` (`RDL`), `technical-english.yaml` (`STE`), and `microsoft-writing.yaml` (`MWG`). LLM entries use a rule-specific `prompt` and canonical `scope`; deterministic entries declare regex detectors or typed checks. `docs/render_rule_cards.py` generates each ruleset reference from the validated registry, and Zensical builds the pages. `NAS`, `RDL`, `STE`, and `MWG` select their respective catalogs; `STE` covers all 53 Issue 9 Part 1 writing rules and eight general recommendations. Part 2's controlled dictionary is not parsed or used to certify vocabulary compliance.
 
 Projects can add their own validated YAML rulesets with `[tool.style-audit].rule-catalogs` and override fields on bundled or project rules with `rule-overrides`. Custom rule IDs use the same selectors and deterministic or LLM execution paths as bundled rules. See the [configuration guide](docs/configuration.md#project-defined-rulesets) for catalogs and [per-rule overrides](docs/configuration.md#per-rule-overrides).
 
@@ -102,6 +102,8 @@ The initial rule inventory adapts the editorial guidance in [Peter Yang's `no-ai
 The `RDL` rules adapt Thomas Hikaru Clark, Matias B. Martin, and Kyle Mahowald's [“Why is AI-generated language so hard to understand?”](https://arxiv.org/html/2610.29162v1), arXiv:2610.29162v1 (21 October 2026), under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The adaptation uses contextual lint judgments rather than reproducing the paper's corpus measurements.
 
 The `STE` rules are original summaries and illustrations of ASD-STE100 Issue 9 Part 1, covering 53 writing rules and eight general recommendations. The supplied full Issue 9 PDF contains Part 2's controlled dictionary; the linter does not ingest it. The [technical-English reference](docs/reference/technical-english.md) documents source citations, copyright and trademark limits, and this scope distinction. The project is independent and is not endorsed by ASD.
+
+The `MWG` catalog adapts broadly applicable guidance from Microsoft's Writing Style Guide using original summaries and examples. It excludes brand-specific guidance, products, terminology, UI procedures, and proprietary word lists. This project is independent and is not endorsed by Microsoft.
 
 ## License
 

@@ -11,6 +11,7 @@ _RULESETS = {
     "NAS": ("No AI slop", "reference/no-ai-slop.md"),
     "RDL": ("Readability", "reference/readability.md"),
     "STE": ("Simplified Technical English", "reference/technical-english.md"),
+    "MWG": ("Microsoft Writing Style (general)", "reference/microsoft-writing.md"),
 }
 
 

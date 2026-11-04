@@ -59,8 +59,15 @@ class RuleCatalogTests(unittest.TestCase):
 
         self.assertEqual(
             [code[:3] for code in codes],
-            ["NAS"] * 24 + ["RDL"] * 7 + ["STE"] * 61,
+            ["NAS"] * 24 + ["RDL"] * 7 + ["STE"] * 61 + ["MWG"] * 13,
         )
+
+    def test_mwg_rules_are_contextual_llm_entries(self):
+        rules = tuple(rule for rule in load_rule_catalog() if rule.code.startswith("MWG"))
+
+        self.assertEqual([rule.code for rule in rules], [f"MWG{number:03}" for number in range(1, 14)])
+        self.assertTrue(all(rule.engine == "llm" for rule in rules))
+        self.assertTrue(all(rule.examples for rule in rules))
 
     def test_yaml_regex_rule_runs_with_unicode_source_positions(self):
         rule, = parse_rule_catalog(_REGEX_CATALOG)

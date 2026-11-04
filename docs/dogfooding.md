@@ -71,13 +71,14 @@ Before the second command, set `OPENROUTER_API_KEY` in the environment for the d
 
 ## Audit the generated rule catalog
 
-`docs/reference/rules.md` is the ruleset overview. The no-ai-slop, readability, and STE pages contain generated Markdown cards from the canonical registry; `docs/render_rule_cards.py` maintains those blocks. Export each ruleset with `_rule_reference(prefix)`, omitting HTML layout wrappers. These commands audit generated descriptions and explanations while leaving intentionally fenced examples outside prose checks:
+`docs/reference/rules.md` is the ruleset overview. The no-ai-slop, readability, STE, and MWG pages contain generated Markdown cards from the canonical registry; `docs/render_rule_cards.py` maintains those blocks. Export each ruleset with `_rule_reference(prefix)`, omitting HTML layout wrappers. These commands audit generated descriptions and explanations while leaving intentionally fenced examples outside prose checks:
 
 ```sh
 set -o pipefail  # Bash: propagate a renderer failure through the pipeline.
 uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("NAS"))' | uv run --group docs style-audit - --stdin-filename docs/reference/no-ai-slop.md --select NAS00 --format json
 uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("RDL"))' | uv run --group docs style-audit - --stdin-filename docs/reference/readability.md --select NAS00 --format json
 uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("STE"))' | uv run --group docs style-audit - --stdin-filename docs/reference/technical-english.md --select STE606,STE801 --format json
+uv run --group docs python -c 'import runpy; print(runpy.run_path("docs/render_rule_cards.py")["_rule_reference"]("MWG"))' | uv run --group docs style-audit - --stdin-filename docs/reference/microsoft-writing.md --select NAS00 --format json
 ```
 
 Check both sides of the pipeline. A renderer failure is not a clean catalog audit. An empty input can produce a successful linter result. The Bash setting above also makes a failed renderer fail the pipeline.

@@ -47,6 +47,7 @@ nav:
       - No AI slop: reference/no-ai-slop.md
       - Readability: reference/readability.md
       - Simplified Technical English: reference/technical-english.md
+      - Microsoft Writing Style (general): reference/microsoft-writing.md
   - Development:
       - Architecture: architecture.md
       - Contributing: contributing.md

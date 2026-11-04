@@ -23,6 +23,8 @@ The independent `RDL` [readability ruleset](reference/readability.md) adapts Tho
 
 The `STE` [Simplified Technical English ruleset](reference/technical-english.md) covers all 53 writing rules and eight general recommendations in ASD-STE100 Issue 9 Part 1. The full supplied PDF also contains Part 2's controlled dictionary, but the checker does not parse its entries or certify vocabulary compliance. `STE606` and `STE801` are local checks; other rules use optional LLM review.
 
+The `MWG` [Microsoft Writing Style ruleset](reference/microsoft-writing.md) adapts broadly applicable editorial principles from Microsoft's guide. It uses original summaries and examples, omits Microsoft-specific products, terminology, and UI instructions, and runs only after an LLM opt-in.
+
 ## Build or preview this site
 
 ```sh
