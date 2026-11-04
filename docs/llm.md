@@ -48,7 +48,7 @@ Every rule has a required `scope` in the registry: **sentence**, **paragraph**, 
 
 The independent `RDL` [readability ruleset](reference/readability.md) uses sentence scope for contextual processing-difficulty judgments. It works with both backends and the same opt-in contract. It does not measure corpus frequency, n-gram perplexity, or standardized dependency length.
 
-`NAS`, `RDL`, and the contextual `STE` rules can be selected separately or combined. The [STE reference](reference/technical-english.md) distinguishes its two narrow local checks from rules that require contextual review. No extra parser, corpus, or language-model download is required.
+`NAS`, `RDL`, `STE`, and `MWG` can be selected separately or combined. The [STE reference](reference/technical-english.md) distinguishes its two narrow local checks from rules that require contextual review. The [MWG reference](reference/microsoft-writing.md) contains general writing guidance and excludes Microsoft-specific products, terminology, and UI procedures. No extra parser, corpus, or language-model download is required.
 
 - **Sentence:** conservative punctuation-based segmentation, retaining unpunctuated tails and fragments and guarding common abbreviations, initialisms, and decimals. It is not a full linguistic parser. Leading and trailing Markdown table-cell pipes are trimmed, and delimiter-only fragments are skipped.
 - **Paragraph:** blank lines, Markdown headings, fenced code, and Markdown list-item starts create boundaries. Soft line wraps stay together.
@@ -89,7 +89,9 @@ The application rejects malformed JSON, unknown, disabled, or wrong-scope IDs, i
 
 Set `api = "decisions"` in `[tool.style-audit.llm]` to use `litellm.decisions` with the OpenAI Decisions request shape. Each enabled rule becomes a named `predicate` question; LiteLLM translates it for supported providers. Style-audit does not validate provider/model compatibility; choose a model accepted by that provider's Decisions endpoint.
 
-The API returns probabilities, not evidence quotes or rationales. A finding is emitted when the rule's probability is greater than or equal to the configured finite `threshold` in `[0, 1]` (default `0.82`). Its evidence and source span cover the full visible logical unit; masked code and quotation spans remain spaces. The diagnostic message combines the rule description and probability, and it has no generated fix. This is deliberately coarser than completion mode's exact quoted evidence.
+The API returns probabilities, not evidence quotes or rationales. A finding is emitted when the rule's probability is greater than or equal to the configured finite `threshold` in `[0, 1]` (default `0.82`); CLI `--threshold` overrides this value for one run. Its evidence and source span cover the full visible logical unit; masked code and quotation spans remain spaces. The diagnostic message combines the rule description and probability, and it has no generated fix. This is deliberately coarser than completion mode's exact quoted evidence.
+
+With `--show-confidences`, the report includes every returned probability, including below-threshold results, with its rule, source span, and visible-unit evidence. This option is available only in Decisions mode and does not make additional provider calls. The scores are model probabilities, not calibrated measures of correctness.
 
 The requested rule must have exactly one `predicate` answer with its requested name and a finite probability in `[0, 1]`. LiteLLM may return answers in a list or tuple. Missing, duplicate, unknown, malformed, or out-of-range answers and provider failures are operational errors, never clean results.
 
@@ -103,6 +105,8 @@ Provider credentials are secrets. Keep them in an environment or secret store; d
 Calls may incur charges. Completion request count is the sum of eligible unit counts across selected scopes. Decisions requests use the same units and scopes, split into batches of at most 128 questions when necessary. Adding another rule in an existing scope adds its guidance to the request; adding a new scope adds that scope's unit requests.
 
 Scopes can overlap, so text may be sent in sentence, paragraph, section, and document requests when all are selected. Unit lengths, rule counts, and response sizes also affect token cost. Smaller scopes omit unrelated document context but can produce more calls. The tool adds no retries. Provider, transport, context-limit, and malformed-response failures are operational errors (exit `2`), never clean results. A valid empty `findings` array means only that no findings were emitted.
+
+Confidence reports repeat visible scope evidence for each evaluated rule and can be large. They expose reviewed text in the local report, including for below-threshold scores; masking is not sensitive-data redaction.
 
 ## Limitations and evidence
 

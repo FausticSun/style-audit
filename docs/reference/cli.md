@@ -68,11 +68,13 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 | `--format text\|json` | Override configured report format. |
 | `--llm` | Explicitly enable LLM rules among the currently selected rules. |
 | `--model MODEL` | Override the configured LiteLLM `provider/model` and opt into judging selected LLM rules; `openrouter/openrouter/free` is the default for chat completions, while Decisions requires a provider-supported model. |
+| `--threshold PROBABILITY` | Override the configured Decisions threshold; finite values from `0` through `1`. Does not opt into LLM judging. |
+| `--show-confidences` | Include all Decisions probabilities in the report, including below-threshold scores; requires Decisions mode and an existing LLM opt-in. |
 | `--stdin-filename NAME` | Set the stdin path for per-file selection; `.py` selects Marimo Markdown cells or Python docstrings, `.pyi` selects docstrings, and `.feature` selects Gherkin processing. |
 | `--version` | Print the package version. |
 | `-h`, `--help` | Print help. |
 
-IDs, prefixes, and filename-style rule globs are matched case-sensitively. `NAS` selects no-ai-slop rules. `NAS1` selects `NAS101` through `NAS121`. `NAS00` selects `NAS001`–`NAS003`. `RDL` selects readability rules.
+IDs, prefixes, and filename-style rule globs are matched case-sensitively. `NAS` selects no-ai-slop rules. `NAS1` selects `NAS101` through `NAS121`. `NAS00` selects `NAS001`–`NAS003`. `RDL` selects readability rules, and `MWG` selects general Microsoft Writing Style judgments.
 
 CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. Without a global selection or matching per-file entry, `.md` inputs default to `NAS` and `RDL`; other inputs select all catalogs. An empty per-file selection disables rules for matching files. See [per-file rule selection](../configuration.md#per-file-rule-selection).
 
@@ -92,9 +94,9 @@ style-audit draft.md --select NAS106 --model openrouter/openrouter/free
 
 Text output reports `path:line:column`, rule ID, explanation, exact evidence, and a suggestion when present. Start line and column positions are one-based, while end positions are exclusive. Offsets count Python Unicode characters, not UTF-8 bytes.
 
-JSON output is a versioned object with a `findings` array. Each finding contains `path`, `code`, `message`, `line`, `column`, `end_line`, `end_column`, `evidence`, and `fix`. Findings sort deterministically by path, start position, rule ID, and end position. Empty scans produce an empty text stream or a JSON object with an empty array.
+JSON output is a versioned object with a `findings` array. Each finding contains `path`, `code`, `message`, `line`, `column`, `end_line`, `end_column`, `evidence`, and `fix`. Findings sort deterministically by path, start position, rule ID, and end position. Empty scans have an empty `findings` array. With `--show-confidences`, JSON also includes `confidence_threshold` and a `confidences` array; each score contains `path`, `code`, `scope`, `probability`, `meets_threshold`, source positions, and visible-unit `evidence`.
 
-Completion findings use exact contiguous visible quotes within the current unit, generated reasons, and optional fixes. Decisions findings use the full visible unit as evidence and include the configured probability threshold; they do not include generated rationales or fixes. Deterministic findings retain exact token or emoji evidence within their rules' units.
+Completion findings use exact contiguous visible quotes within the current unit, generated reasons, and optional fixes; chat completion models don't return confidence probabilities. Decisions findings use the full visible unit as evidence and include the effective probability threshold. `--show-confidences` reports every Decisions probability, including scores below the threshold, with its source span and evidence. Deterministic findings retain exact token or emoji evidence within their rules' units.
 
 
 | Exit status | Meaning |

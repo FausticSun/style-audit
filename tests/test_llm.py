@@ -161,6 +161,29 @@ class LlmJudgmentTests(unittest.TestCase):
                     )
                 self.assertEqual(len(findings), expected_count)
 
+    def test_decisions_collect_all_scores_including_below_threshold(self) -> None:
+        document = TextDocument(path="draft.md", text="First sentence. Second sentence.")
+        probabilities = iter((0.7, 0.4))
+        confidence_scores = []
+        with patch(
+            "style_audit.llm.litellm.decisions",
+            side_effect=lambda **_: self._decision_response(next(probabilities)),
+        ):
+            findings = judge_document(
+                document,
+                self.rules,
+                "openai/test-model",
+                api="decisions",
+                threshold=0.5,
+                confidence_scores=confidence_scores,
+            )
+
+        self.assertEqual([finding.evidence for finding in findings], ["First sentence."])
+        self.assertEqual(
+            [(score.evidence, score.probability, score.meets_threshold) for score in confidence_scores],
+            [("First sentence.", 0.7, True), ("Second sentence.", 0.4, False)],
+        )
+
     def test_malformed_decisions_answers_and_provider_errors_fail_visibly(self) -> None:
         responses = (
             SimpleNamespace(),

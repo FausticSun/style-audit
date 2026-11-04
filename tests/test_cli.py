@@ -551,6 +551,141 @@ class CliTests(unittest.TestCase):
         chat.assert_called_once()
         self.assertEqual(chat.call_args.kwargs["model"], "openai/test-model")
 
+    def test_mwg_catalog_selection_runs_and_reports_llm_finding(self) -> None:
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=json.dumps({
+                "findings": [{
+                    "code": "MWG001",
+                    "evidence": "The team recommends the hosted option.",
+                    "reason": "The paragraph states its recommendation directly.",
+                }],
+            }),
+        ))])
+        text = "We compared operating costs and migration work. The team recommends the hosted option."
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = _parse_options([
+                "-", "--stdin-filename", "draft.md", "--select", "MWG001",
+                "--model", "openai/test-model", "--format", "json",
+            ])
+            with patch("style_audit.llm.litellm.completion", return_value=response) as chat:
+                code, output = run(args, text, root)
+
+        self.assertEqual(code, 1)
+        findings = json.loads(output)["findings"]
+        self.assertEqual(
+            [(item["code"], item["evidence"]) for item in findings],
+            [("MWG001", "The team recommends the hosted option.")],
+        )
+        chat.assert_called_once()
+
+    def test_decisions_threshold_override_reports_all_confidences(self) -> None:
+        text = "First sentence. Second sentence."
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text(
+                '[tool.style-audit]\nselect = ["NAS106"]\n'
+                '[tool.style-audit.llm]\nmodel = "openai/test-model"\n'
+                'api = "decisions"\nthreshold = 0.9\n',
+                encoding="utf-8",
+            )
+
+            for output_format in ("json", "text"):
+                probabilities = iter((0.7, 0.4))
+                calls = []
+
+                def decide(**kwargs):
+                    calls.append(kwargs)
+                    return SimpleNamespace(answers=[SimpleNamespace(
+                        type="predicate",
+                        name="NAS106",
+                        probability=next(probabilities),
+                    )])
+
+                args = _parse_options([
+                    "-", "--stdin-filename", "draft.md", "--threshold", "0.5",
+                    "--show-confidences", "--format", output_format,
+                ])
+                with patch("style_audit.llm.litellm.decisions", side_effect=decide):
+                    with patch("style_audit.llm.litellm.completion") as completion:
+                        code, output = run(args, text, root)
+
+                self.assertEqual(code, 1)
+                self.assertEqual(len(calls), 2)
+                completion.assert_not_called()
+                if output_format == "json":
+                    report = json.loads(output)
+                    self.assertEqual(len(report["findings"]), 1)
+                    self.assertIn("decision probability 0.70 meets threshold 0.50", report["findings"][0]["message"])
+                    self.assertEqual(report["confidence_threshold"], 0.5)
+                    self.assertEqual(
+                        [(item["evidence"], item["probability"], item["meets_threshold"])
+                         for item in report["confidences"]],
+                        [("First sentence.", 0.7, True), ("Second sentence.", 0.4, False)],
+                    )
+                else:
+                    self.assertIn("Model confidence scores (threshold 0.50):", output)
+                    self.assertIn("NAS106: 0.70 (meets threshold)", output)
+                    self.assertIn("NAS106: 0.40 (below threshold)", output)
+
+            low_probabilities = iter((0.4, 0.3))
+
+            def low_confidence(**kwargs):
+                return SimpleNamespace(answers=[SimpleNamespace(
+                    type="predicate",
+                    name="NAS106",
+                    probability=next(low_probabilities),
+                )])
+
+            args = _parse_options([
+                "-", "--stdin-filename", "draft.md", "--threshold", "0.5",
+                "--show-confidences", "--format", "json",
+            ])
+            with patch("style_audit.llm.litellm.decisions", side_effect=low_confidence):
+                code, output = run(args, text, root)
+            report = json.loads(output)
+            self.assertEqual(code, 0)
+            self.assertEqual(report["findings"], [])
+            self.assertEqual(
+                [(item["probability"], item["meets_threshold"]) for item in report["confidences"]],
+                [(0.4, False), (0.3, False)],
+            )
+
+    def test_confidence_options_require_decisions_and_reject_invalid_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for option in ("--show-confidences", "--threshold"):
+                arguments = [
+                    "-", "--select", "NAS106", "--model", "openai/test-model", option,
+                ]
+                if option == "--threshold":
+                    arguments.append("0.5")
+                args = _parse_options(arguments)
+                with self.subTest(option=option):
+                    expected_error = "requires" if option == "--show-confidences" else "Decisions API"
+                    with self.assertRaisesRegex(AuditError, expected_error):
+                        run(args, "First sentence.", root)
+
+        with patch("sys.stderr", new_callable=StringIO) as stderr:
+            code = main(["--threshold", "nan"])
+        self.assertEqual(code, 2)
+        self.assertIn("finite number from 0 to 1", stderr.getvalue())
+
+    def test_confidence_reporting_does_not_enable_llm_judging(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text(
+                '[tool.style-audit.llm]\nmodel = "openai/test-model"\napi = "decisions"\n',
+                encoding="utf-8",
+            )
+            args = _parse_options([
+                "-", "--stdin-filename", "draft.md", "--show-confidences",
+            ])
+            with patch("style_audit.llm.litellm.decisions") as provider:
+                with self.assertRaisesRegex(AuditError, "LLM opt-in"):
+                    run(args, "First sentence.", root)
+            provider.assert_not_called()
+
     def test_clean_stdin_and_explicit_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

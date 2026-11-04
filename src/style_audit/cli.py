@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 import fnmatch
+import math
 import os
 from pathlib import Path
 import sys
@@ -18,7 +19,7 @@ from .deterministic import analyze_deterministic
 from .docstrings import extract_docstrings
 from .marimo_docs import extract_markdown_cells
 from .llm import judge_document
-from .models import AuditError, Diagnostic, Rule
+from .models import AuditError, ConfidenceScore, Diagnostic, Rule
 from .reporting import render_json, render_text, sort_diagnostics
 from .rules import RULES
 from .gherkin import document_from_feature
@@ -131,6 +132,16 @@ def _collect(paths: Sequence[str], config: AuditConfig, stdin_text: str | None, 
     return documents
 
 
+def _validate_cli_threshold(
+    ctx: click.Context,
+    param: click.Parameter,
+    value: float | None,
+) -> float | None:
+    if value is not None and (not math.isfinite(value) or not 0 <= value <= 1):
+        raise click.BadParameter("must be a finite number from 0 to 1", ctx=ctx, param=param)
+    return value
+
+
 class CLIOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -141,6 +152,8 @@ class CLIOptions(BaseModel):
     format: str | None
     llm: bool
     model: str | None
+    threshold: float | None = None
+    show_confidences: bool = False
     stdin_filename: str
 
 
@@ -179,6 +192,18 @@ def build_cli() -> click.Command:
         help="LiteLLM model for judging (completion default: openrouter/openrouter/free; required for Decisions)",
     )
     @click.option(
+        "--threshold",
+        type=float,
+        callback=_validate_cli_threshold,
+        metavar="PROBABILITY",
+        help="override the configured Decisions threshold in [0, 1]",
+    )
+    @click.option(
+        "--show-confidences",
+        is_flag=True,
+        help="include all Decisions probabilities in the report, including below-threshold scores",
+    )
+    @click.option(
         "--stdin-filename",
         default="<stdin>",
         show_default=True,
@@ -198,6 +223,8 @@ def build_cli() -> click.Command:
         format: str | None,
         llm: bool,
         model: str | None,
+        threshold: float | None,
+        show_confidences: bool,
         stdin_filename: str,
     ) -> int:
         options = CLIOptions(
@@ -208,6 +235,8 @@ def build_cli() -> click.Command:
             format=format,
             llm=llm,
             model=model,
+            threshold=threshold,
+            show_confidences=show_confidences,
             stdin_filename=stdin_filename,
         )
         try:
@@ -225,6 +254,14 @@ def build_cli() -> click.Command:
 def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None) -> tuple[int, str]:
     working_directory = (cwd or Path.cwd()).resolve()
     config = load_config(working_directory, args.config)
+    if args.threshold is not None:
+        if not math.isfinite(args.threshold) or not 0 <= args.threshold <= 1:
+            raise AuditError("--threshold must be a finite number from 0 to 1")
+        if config.llm_api != "decisions":
+            raise AuditError("--threshold is available only with the Decisions API")
+    if args.show_confidences and config.llm_api != "decisions":
+        raise AuditError("--show-confidences requires [tool.style-audit.llm].api = 'decisions'")
+    effective_threshold = args.threshold if args.threshold is not None else config.llm_threshold
     rules_by_code = {rule.code: rule for rule in (*RULES, *config.project_rules)}
     rules_by_code.update({rule.code: rule for rule in config.overridden_rules})
     rules = tuple(rules_by_code.values())
@@ -275,6 +312,10 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
             raise AuditError("LLM judging requires a model; configure [tool.style-audit.llm].model or pass --model")
         rule_plans[document.path] = deterministic_rules, llm_rules if use_llm else (), document_model
 
+    if args.threshold is not None or args.show_confidences:
+        if not any(llm_rules for _, llm_rules, _ in rule_plans.values()):
+            raise AuditError("--threshold and --show-confidences require selected LLM rules and an LLM opt-in")
+    confidence_scores: list[ConfidenceScore] | None = [] if args.show_confidences else None
     findings: list[Diagnostic] = []
     for document in documents:
         deterministic_rules, llm_rules, document_model = rule_plans[document.path]
@@ -292,14 +333,18 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
                 llm_rules,
                 document_model or "",
                 api=config.llm_api,
-                threshold=config.llm_threshold,
+                threshold=effective_threshold,
                 litellm_config=config.llm_litellm,
                 ste_allowed_words=config.ste_allowed_words,
                 ste_disallowed_words=config.ste_disallowed_words,
+                confidence_scores=confidence_scores,
             ))
     ordered = sort_diagnostics(findings)
     output_format = args.format or config.output
-    rendered = render_json(ordered) if output_format == "json" else render_text(ordered)
+    if output_format == "json":
+        rendered = render_json(ordered, confidence_scores=confidence_scores, threshold=effective_threshold)
+    else:
+        rendered = render_text(ordered, confidence_scores=confidence_scores, threshold=effective_threshold)
     return (1 if ordered else 0), rendered
 
 

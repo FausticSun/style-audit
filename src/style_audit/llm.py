@@ -8,7 +8,7 @@ from typing import Any, Literal
 import litellm
 
 from .config import LiteLLMConfig
-from .models import AuditError, Diagnostic, Rule, RuleScope
+from .models import AuditError, ConfidenceScore, Diagnostic, Rule, RuleScope
 from .text import TextDocument, TextUnit
 
 
@@ -251,6 +251,7 @@ def _judge_decisions(
     *,
     ste_allowed_words: tuple[str, ...] = (),
     ste_disallowed_words: tuple[str, ...] = (),
+    confidence_scores: list[ConfidenceScore] | None = None,
 ) -> list[Diagnostic]:
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
         raise AuditError("Decisions threshold must be a finite number from 0 to 1")
@@ -318,7 +319,21 @@ def _judge_decisions(
                 line, column, end_line, end_column = document.span(start, end)
                 for rule in batch:
                     probability = probabilities[rule.code]
-                    if probability < threshold:
+                    meets_threshold = probability >= threshold
+                    if confidence_scores is not None:
+                        confidence_scores.append(ConfidenceScore(
+                            path=document.path,
+                            code=rule.code,
+                            scope=unit.scope,
+                            probability=probability,
+                            meets_threshold=meets_threshold,
+                            line=line,
+                            column=column,
+                            end_line=end_line,
+                            end_column=end_column,
+                            evidence=evidence,
+                        ))
+                    if not meets_threshold:
                         continue
                     findings.append(Diagnostic(
                         path=document.path,
@@ -346,9 +361,12 @@ def judge_document(
     threshold: float = 0.82,
     ste_allowed_words: tuple[str, ...] = (),
     ste_disallowed_words: tuple[str, ...] = (),
+    confidence_scores: list[ConfidenceScore] | None = None,
     litellm_config: LiteLLMConfig = LiteLLMConfig(),
 ) -> list[Diagnostic]:
     """Judge selected rules with provider-neutral LiteLLM APIs."""
+    if confidence_scores is not None and api != "decisions":
+        raise AuditError("confidence scores are available only with the Decisions API")
     if not rules:
         return []
     if api == "decisions":
@@ -360,6 +378,7 @@ def judge_document(
             threshold,
             ste_allowed_words=ste_allowed_words,
             ste_disallowed_words=ste_disallowed_words,
+            confidence_scores=confidence_scores,
         )
     if api != "completion":
         raise AuditError(f"unsupported LiteLLM judging API {api!r}")

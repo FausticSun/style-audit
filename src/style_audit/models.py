@@ -102,3 +102,18 @@ class Diagnostic(_FrozenModel):
     end_column: int
     evidence: str
     fix: str
+
+
+class ConfidenceScore(_FrozenModel):
+    """A source-located Decisions probability, including below-threshold results."""
+
+    path: str
+    code: str
+    scope: RuleScope
+    probability: float
+    meets_threshold: bool
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+    evidence: str
