@@ -9,9 +9,13 @@ style-audit                       # scan the current directory
 style-audit draft.md              # audit an explicit file
 style-audit docs/                  # traverse matching files
 cat draft.txt | style-audit -      # read standard input
+style-audit --commit-messages HEAD
+style-audit --commit-messages HEAD~20..HEAD
 ```
 
 Pass one or more paths. The literal `-` reads stdin once and may be combined with files. `--stdin-filename NAME` sets its diagnostic path. It selects Python extraction for `.py` and `.pyi` (Marimo Markdown cells or ordinary Python docstrings), or Gherkin processing for `.feature`. Other names retain prose input. If no paths are given, `.` is used.
+
+`--commit-messages REVISION` asks Git for commit messages reachable from a revision or range. `HEAD` includes all commits reachable from the current branch; a range can narrow the history. The audit includes each subject and body, not diffs, author metadata, or changed files. It requires a Git repository and cannot be combined with positional paths or stdin. Each message is an independent UTF-8 document reported as `commit/<full-object-id>.txt`. File include/exclude patterns do not apply; per-file selection can match the virtual `commit/*.txt` paths. Without an explicit global or per-file selection, commit messages use the default `NAS` and `RDL` rulesets, including their LLM judgments unless judging is disabled.
 
 Explicit files need not match the directory include patterns, but they must be UTF-8 text. Default excludes apply during directory discovery; passing a named file explicitly remains an intentional override.
 
@@ -32,7 +36,7 @@ cat module.py | style-audit - --stdin-filename module.py --select NAS00
 style-audit module.py --select NAS00,RDL --model openrouter/openrouter/free
 ```
 
-No new rule IDs or configuration toggle are needed. The same selection, ignores, LLM opt-in, and exit codes apply. Files without extracted prose produce no findings or provider requests. Source positions count original Unicode characters, and UTF-8 BOM and physical newlines are retained in the source mapping.
+No new rule IDs or configuration toggle are needed. The same selection, ignores, LLM enablement, and exit codes apply. Files without extracted prose produce no findings or provider requests. Source positions count original Unicode characters, and UTF-8 BOM and physical newlines are retained in the source mapping.
 
 Evidence is the original source spelling, not the cleaned model input. A span can contain escape sequences, indentation, or the quote/whitespace/comment separators between concatenated literals. Those separators are source context, not audited prose or remote-request content.
 
@@ -51,7 +55,7 @@ Selecting LLM rules sends only the current extracted Markdown unit after normal 
 
 `.feature` files use a syntax-aware, text-only Gherkin pass. The CLI does not load step definitions or execute scenarios. The pass masks the keyword prefixes for `Feature`, `Rule`, `Background`, `Scenario`, `Scenario Outline`, and `Examples`, and for the English step keywords `Given`, `When`, `Then`, `And`, `But`, or `*`. Text after those prefixes—including Gherkin heading descriptions and step wording—remains auditable prose.
 
-Full-line tags, comments, table rows, Gherkin docstring delimiters and contents, and fenced code blocks marked with triple backticks are masked. Headings and steps establish segmentation boundaries, and original source positions are preserved. Masking is not sensitive-data redaction. If LLM rules are opted in, visible heading and step prose is eligible for remote review.
+Full-line tags, comments, table rows, Gherkin docstring delimiters and contents, and fenced code blocks marked with triple backticks are masked. Headings and steps establish segmentation boundaries, and original source positions are preserved. Masking is not sensitive-data redaction. Default `NAS` and `RDL` LLM rules send visible heading and step prose for review unless judging is disabled or those rules are not selected.
 
 ```sh
 style-audit tests/bdd/features/
@@ -66,19 +70,20 @@ cat checkout.feature | style-audit - --stdin-filename checkout.feature
 | `--select RULE[,RULE]` | Select rule IDs, prefixes, or globs and replace global and per-file selections. Repeatable. |
 | `--ignore RULE[,RULE]` | Suppress IDs, prefixes, or globs and add them to configured `ignore`. Repeatable. |
 | `--format text\|json` | Override configured report format. |
-| `--llm` | Explicitly enable LLM rules among the currently selected rules. |
-| `--model MODEL` | Override the configured LiteLLM `provider/model` and opt into judging selected LLM rules; `openrouter/openrouter/free` is the default for chat completions, while Decisions requires a provider-supported model. |
-| `--threshold PROBABILITY` | Override the configured Decisions threshold; finite values from `0` through `1`. Does not opt into LLM judging. |
-| `--show-confidences` | Include all Decisions probabilities in the report, including below-threshold scores; requires Decisions mode and an existing LLM opt-in. |
+| `--commit-messages REVISION` | Audit commit messages reachable from this Git revision or range; cannot be combined with positional paths or stdin. |
+| `--llm` | Force-enable LLM judgments for selected rules, overriding `llm.enabled = false` for this invocation. |
+| `--model MODEL` | Choose a LiteLLM `provider/model` and force-enable judging for selected LLM rules; chat completions default to `openrouter/openrouter/free`, while Decisions requires a provider-supported model. |
+| `--threshold PROBABILITY` | Override the configured Decisions threshold; finite values from `0` through `1`. Does not change rule selection or LLM enablement. |
+| `--show-confidences` | Include all Decisions probabilities in the report, including below-threshold scores; requires Decisions mode and selected LLM rules with judging enabled. |
 | `--stdin-filename NAME` | Set the stdin path for per-file selection; `.py` selects Marimo Markdown cells or Python docstrings, `.pyi` selects docstrings, and `.feature` selects Gherkin processing. |
 | `--version` | Print the package version. |
 | `-h`, `--help` | Print help. |
 
 IDs, prefixes, and filename-style rule globs are matched case-sensitively. `NAS` selects no-ai-slop rules. `NAS1` selects `NAS101` through `NAS121`. `NAS00` selects `NAS001`–`NAS003`. `RDL` selects readability rules, and `MWG` selects general Microsoft Writing Style judgments.
 
-CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. Without a global selection or matching per-file entry, `.md` inputs default to `NAS` and `RDL`; other inputs select all catalogs. An empty per-file selection disables rules for matching files. See [per-file rule selection](../configuration.md#per-file-rule-selection).
+CLI `--select` replaces configured global and per-file selections, and CLI `--ignore` combines with configured ignores. Without a global selection or matching per-file entry, supported inputs default to all `NAS` and `RDL` rules; other catalogs require explicit selection. An empty per-file selection disables rules for matching files. See [per-file rule selection](../configuration.md#per-file-rule-selection).
 
-Default `.md` selection chooses `NAS` and `RDL` but does not enable remote judging. LLM review requires selected LLM rules and an opt-in through `enabled = true`, explicit LLM selection, `--llm`, or `--model`. The model defaults to `openrouter/openrouter/free` for chat completions, which uses `OPENROUTER_API_KEY`; Decisions mode has no default and needs a provider-supported model. A deterministic-only effective selection does not start remote calls. See [LLM review and privacy](../llm.md).
+Selected LLM rules are judged by default. Set `llm.enabled = false` to disable judging; `--llm` or `--model` force-enables it for one invocation. The default completion model is `openrouter/openrouter/free` and uses `OPENROUTER_API_KEY`; Decisions mode needs a provider-supported model. A deterministic-only selection never sends text remotely. See [LLM review and privacy](../llm.md).
 
 `STE` selects all 61 ASD-STE100 entries, including recommendations. `STE606` and `STE801` are the local paragraph-count and semicolon rules. Markdown table blocks are not paragraphs and do not count toward the STE606 six-sentence limit. STE801 still checks semicolons in table cells. Combine selectors with `--select NAS00,RDL,STE606,STE801`, or quote globs such as `--select 'NAS00?'` and `--ignore 'NAS00[23]'`. Every selector must match a registered rule.
 

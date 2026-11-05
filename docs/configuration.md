@@ -22,20 +22,20 @@ All settings are optional. Directory scanning defaults to `*.md`, `*.markdown`, 
 Directory scans exclude `AGENTS.md` and `SKILL.md` at any depth by default. Includes and excludes are arrays of non-empty strings; a bare excluded directory name matches that component at any depth, and glob patterns can exclude directory subtrees.
 Supplying an `include` or `exclude` array replaces the corresponding default list. Restate the defaults you still need, including these file exclusions. `output` is `text` or `json`.
 
-Use `include = ["*.py", "*.pyi"]` to scan Python source only. Ordinary files contribute docstrings; recognized Marimo apps contribute direct Markdown cell literals. Use `include = ["*.md", "*.markdown", "*.rst", "*.txt", "*.feature"]` for prose files and Gherkin without Python source. Existing LLM opt-ins also apply to unmasked Gherkin prose and extracted Python prose. Narrow includes if those inputs must not be reviewed remotely. See [Python inputs](reference/cli.md#python-docstrings) and [Gherkin feature files](reference/cli.md#gherkin-feature-files).
+Use `include = ["*.py", "*.pyi"]` to scan Python source only. Ordinary files contribute docstrings; recognized Marimo apps contribute direct Markdown cell literals. Default NAS and readability judgments also apply to extracted Python prose and unmasked Gherkin text. Narrow includes, select local-only rules, or disable judging if those inputs must not be sent remotely. See [Python inputs](reference/cli.md#python-docstrings) and [Gherkin feature files](reference/cli.md#gherkin-feature-files).
 
 The `llm` table accepts:
 
 | Setting | Type and default | Effect |
 | --- | --- | --- |
-| `enabled` | Boolean, default `false` | Opts selected LLM rules into judging; it never adds rules to the effective selection. |
-| `model` | Optional non-empty string; defaults to `openrouter/openrouter/free` for `completion`, with no default for `decisions` | LiteLLM `provider/model` name. Decisions mode needs a provider-supported model; configure it here or with `--model`. A model never enables global judging by itself. |
+| `enabled` | Boolean; judging is enabled when omitted, `false` disables it | Controls whether selected LLM rules are judged. `--llm` or `--model` can force-enable judging for one CLI invocation. |
+| `model` | Optional non-empty string; defaults to `openrouter/openrouter/free` for `completion`, with no default for `decisions` | LiteLLM `provider/model` name. Decisions mode needs a provider-supported model; configure it here or with `--model`. A TOML model value does not override `enabled = false`. |
 | `api` | `completion` or `decisions`, default `completion` | Selects LiteLLM chat completions with quoted findings, or the provider-neutral Decisions API with probability findings. |
 | `threshold` | Finite number in `[0, 1]`, default `0.82` | Decisions mode only; emits findings when the returned predicate probability is at least this value. CLI `--threshold` overrides it for one run. |
 
 For chat-completion judging, the default `openrouter/openrouter/free` model uses OpenRouter's `OPENROUTER_API_KEY`; set it in the environment. This free-model route does not support OpenRouter's Decisions API. Decisions mode requires a model supported by the selected provider's Decisions endpoint. Never put raw credentials in project TOML.
 
-LLM judging is off by default, including when the default Markdown selection contains RDL rules. A model alone does not enable it. Opt in through `[tool.style-audit.llm].enabled = true`, `--llm` or `--model`, explicit LLM-rule selection, or a matching per-file entry that selects LLM rules. A matching per-file entry opts only that file in. See [LLM review and privacy](llm.md) for request content and provider behavior.
+LLM judging for selected rules is enabled by default when `enabled` is omitted. Set `[tool.style-audit.llm].enabled = false` to disable it; `--llm` or `--model` force-enables it for one invocation. A deterministic-only selection such as `NAS00` remains local. See [LLM review and privacy](llm.md) for request content and provider behavior.
 
 To use the Decisions API, set `api = "decisions"`, provide a model supported by that provider's endpoint, and set the probability threshold. CLI `--threshold` overrides the configured value for one run. OpenRouter's Decisions API supports TypeSafe Jev models such as `openrouter/typesafe/jev-1.14`; the free-model router is not compatible. See [LiteLLM's OpenRouter Decisions documentation](https://docs.litellm.ai/docs/providers/openrouter#decisions-jev).
 
@@ -125,7 +125,7 @@ rules:
         explanation: Replace the vague intensifier with a direct claim.
 ```
 
-Regex detector fields and scopes use the same validated schema as the packaged catalogs. Select custom rules by ID or prefix in `select`, `per-file-select`, or `--select`; ignore and glob selectors apply to them too. Custom catalogs do not change the default Markdown selection of `NAS` and `RDL`, so add custom prefixes to `select` or a matching per-file entry to run them on Markdown. LLM rules follow the normal opt-in and privacy contract: an explicit selection plus a model can send selected rule prompts, examples, and audited prose to the configured provider. See [LLM review and privacy](llm.md).
+Regex detector fields and scopes use the same validated schema as the packaged catalogs. Select custom rules by ID or prefix in `select`, `per-file-select`, or `--select`; ignore and glob selectors apply to them too. Custom catalogs do not change the default `NAS` and `RDL` selection, so add custom prefixes to `select` or a matching per-file entry to run them by default. Selected custom LLM rules are judged under the same default-enabled and privacy contract. See [LLM review and privacy](llm.md).
 
 ## Per-rule overrides
 
@@ -161,15 +161,15 @@ Overrides are partial: omitted fields retain their catalog values. `name`, `sour
 Override paths follow the same project-relative and symlink-containment rules as [rule catalogs](#project-defined-rulesets). Rule IDs may appear only once across all configured override files. Unknown rules, duplicate overrides, unsupported fields, invalid detector values, and unreadable files fail configuration with exit status `2`. Overrides change rule metadata and execution but not rule selection; `select`, `per-file-select`, and CLI selection still use the original rule ID.
 
 
-## Selection, ignoring, and LLM opt-in
+## Selection, ignoring, and LLM judging
 
-Without a non-empty `select`, `.md` inputs with no matching per-file entry default to the `NAS` and `RDL` catalogs; other unmatched inputs retain all registered rules. This changes rule selection only; LLM judging remains opt-in. A non-empty global `select` or matching per-file entry overrides the Markdown default. `ignore` removes rules from the effective selection.
+Without a non-empty `select` or a matching per-file entry, every supported input defaults to all `NAS` no-ai-slop and `RDL` readability rules. Other bundled catalogs and custom catalogs are not selected by default. A non-empty global `select` or matching per-file entry replaces that default. `ignore` removes rules from the effective selection.
 
 `"NAS"` selects no-ai-slop rules. `"NAS1"` matches `NAS101`–`NAS121`. `"NAS00"` selects `NAS001`–`NAS003`. `"NAS00?"` selects the three local rules. `"NAS00[13]"` selects `NAS001` and `NAS003`.
 
 `"RDL"` selects readability rules. `"STE"` selects all 61 ASD-STE100 rules and recommendations. `"MWG"` selects the general Microsoft Writing Style judgments. `"STE606"` selects the local six-sentence paragraph check, and `"STE801"` selects the local semicolon check. Combine them, for example, with `select = ["NAS00", "RDL", "STE606", "STE801", "MWG"]`.
 
-Default `.md` selection does not enable remote review. For `api = "completion"`, the model defaults to `openrouter/openrouter/free`; Decisions mode has no model default and needs a provider-supported model when LLM rules are judged.
+The default `NAS` and `RDL` selection runs all selected LLM rules unless `[tool.style-audit.llm].enabled = false`. For `api = "completion"`, the model defaults to `openrouter/openrouter/free`; Decisions mode has no model default and needs a provider-supported model.
 
 LLM rules share one synchronous request per eligible unit and scope in completion mode. Decisions mode uses the same scope units and sends up to 128 predicate questions per request; larger scopes of selected rules are split into multiple requests. See [segmentation, privacy, and cost](llm.md#canonical-scopes-and-segmentation).
 
@@ -182,7 +182,7 @@ style-audit --select NAS101 --model openrouter/openrouter/free draft.md
 style-audit --select RDL --model openrouter/openrouter/free draft.md
 ```
 
-LLM judging remains off by default, including for default `.md` selections. It requires selected LLM rules and an explicit opt-in: `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, or explicitly selecting an LLM rule. A matching per-file entry selecting LLM rules opts that file in. Explicit CLI/model/rule-selection opt-ins still take precedence over `enabled = false`. `--llm` does not broaden `select`; deterministic-only checks never send text remotely.
+LLM judging runs for selected LLM rules by default. Set `enabled = false` to disable it; `--llm` or `--model` force-enables it for one invocation. A deterministic-only effective selection never sends text remotely, and `--llm` or `--model` does not broaden the selection.
 
 `AuditConfig` and `load_config()` in `style_audit.config` implement these settings. The parser accepts only the documented setting types. A broken `pyproject.toml` is not silently ignored.
 
@@ -211,7 +211,7 @@ File patterns match case-sensitive, slash-separated paths **relative to the dire
 
 Selection order:
 
-1. Start with configured global `select` when non-empty. Otherwise, an unmatched `.md` input defaults to `NAS` and `RDL`; other inputs start with all rules.
+1. Start with configured global `select` when non-empty. Otherwise, supported inputs default to `NAS` and `RDL`.
 2. If per-file patterns match, replace that selection with the **union** of their rule selectors. Declaration order and pattern specificity do not affect the result. An empty matching array selects no rules unless another matching entry contributes rules.
 3. CLI `--select`, when supplied, replaces both global and per-file selection.
 4. Remove global `ignore` and CLI `--ignore`. Ignored rules cannot be re-enabled by a file entry or CLI selection.
@@ -220,8 +220,8 @@ File mappings do not change discovery, `include`/`exclude`, or a rule's canonica
 
 Stdin uses `--stdin-filename` for matching. Relative names are resolved from the invocation directory, then made relative to the configuration root. Absolute names also work and need not exist. Unnamed stdin uses `<stdin>` and inherits the global selection unless a pattern matches that name.
 
-A matching per-file entry that selects LLM rules opts that file into judging; other files follow their own selection policy. Unmatched entries do not require a model.
+Per-file entries choose rules only for matching paths; selected LLM rules are judged by default unless `llm.enabled = false`. An unmatched entry does not itself add a model requirement; other files retain the default or configured selection.
 
-Global `llm.enabled`, `--llm`, and `--model` still opt into any LLM rules retained by each file's effective selection. Use a local global selection such as `NAS00` when other files must stay local. Model requirements are checked for all collected documents before any provider call. See [LLM review and privacy](llm.md).
+LLM judging is enabled by default when `llm.enabled` is omitted. `llm.enabled = false` disables it for all files; `--llm` or `--model` overrides that setting for one invocation. Use `select = ["NAS00"]` or a matching local-only selection to keep other files local. Model requirements are checked for all collected documents before any provider call. See [LLM review and privacy](llm.md).
 
 The table requires non-empty file-pattern keys and arrays of non-empty rule-selector strings. Invalid entries fail with exit `2`, even when no file matches or CLI `--select` overrides them.

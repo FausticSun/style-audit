@@ -26,6 +26,18 @@ uv run style-audit tests/bdd/features/ --select NAS00,STE606,STE801 --format jso
 
 Review findings against the visible title or step. Do not treat masked fixture data as a clean prose judgment.
 
+## Audit commit messages
+
+Audit all commit messages reachable from `HEAD`, or narrow the history with a Git revision range:
+
+```sh
+uv run style-audit --commit-messages HEAD --format json
+uv run style-audit --commit-messages HEAD~20..HEAD --select NAS00
+```
+
+The audit reads commit subjects and bodies, not diffs, author metadata, or changed files. Each message is an independent document at `commit/<full-object-id>.txt`. With no global or per-file selection, it runs all `NAS` and `RDL` rules, including LLM judgments by default. This sends eligible commit prose to the configured provider; use `[tool.style-audit.llm].enabled = false` or deterministic-only `--select` rules to keep the run local.
+
+The live `style-audit --commit-messages HEAD --format json` run loaded 21 reachable messages, then exited `2` during LLM judging because the provider response did not satisfy the required JSON contract (`LLM response must be a JSON object containing only a findings array`). No complete report was produced. The earlier local deterministic pass found no patterns but does not validate the default LLM rules.
 
 ## Audit Python docstrings
 
@@ -45,7 +57,7 @@ printf '%s\n' '# We utilize comments.' '"""A robust parser."""' 'VALUE = "foster
 
 Expect `NAS001` for the docstring's term at line 2, column 6, with exit `1`. Replacing only the docstring with `"""An integer parser."""` should produce no findings and exit `0`. Leave the comment and assigned string unchanged to check exclusion. Invalid Python must fail with exit `2`, not an empty successful audit.
 
-Local checks make no provider calls. For optional editorial review, select LLM rules; the default model is `openrouter/openrouter/free` and uses `OPENROUTER_API_KEY`. Remote requests contain only the current docstring unit's masked prose, never surrounding code or comments. Private prose written in a docstring is still eligible for transmission. Review [Python scope and privacy](llm.md#python-docstrings) before enabling that run.
+Local checks make no provider calls. The default `NAS`/`RDL` selection includes LLM review for eligible docstrings; use `llm.enabled = false` or deterministic-only `--select` rules to keep the run local. Remote requests contain only the current docstring unit's masked prose, never surrounding code or comments. Private docstring prose is still eligible for transmission. Review [Python scope and privacy](llm.md#python-docstrings) before running that audit.
 
 ### Observed own-code audit
 
@@ -57,9 +69,9 @@ These are local observations, not a live-provider review or a claim of all-rule 
 
 ## Audit Marimo Markdown cells
 
-The system-design report is a Marimo `.py` app. Style-audit parses the file without importing it: direct `mo.md()` string literals are separate documents, static f-string text is eligible, and interpolation expressions, variables, widgets, Mermaid diagrams, comments, and Python code are excluded. Findings point to the original source. An LLM opt-in sends only visible prose from the selected cell unit; treat that prose as remote input.
+The system-design report is a Marimo `.py` app. Style-audit parses the file without importing it: direct `mo.md()` string literals are separate documents, static f-string text is eligible, and interpolation expressions, variables, widgets, Mermaid diagrams, comments, and Python code are excluded. Findings point to the original source. Default `NAS` and `RDL` LLM rules review visible cell prose unless disabled or excluded by selection; treat that prose as remote input.
 
-Run the deterministic patterns locally, then explicitly opt into both requested editorial rulesets:
+Run local checks, then the default `NAS` and `RDL` review:
 
 ```sh
 uv run style-audit notebooks/system_design.py --select NAS00,STE606,STE801 --format json
@@ -131,7 +143,7 @@ The following deterministic runs were observed during the earlier documentation 
 
 ## Review with LiteLLM
 
-For optional editorial review, select LLM rules. The default model `openrouter/openrouter/free` uses `OPENROUTER_API_KEY`; override it with `--model` to use another LiteLLM `provider/model`. Keep credentials out of the repository and project TOML.
+The default `NAS`/`RDL` selection runs selected LLM rules. `--select` replaces that selection; for example, `NAS1` selects only the no-ai-slop LLM rules. The default model `openrouter/openrouter/free` uses `OPENROUTER_API_KEY`; override it with `--model` to use another LiteLLM `provider/model`. Keep credentials out of the repository and project TOML.
 
 ```sh
 uv run --group docs style-audit README.md docs/ --select NAS1 --format json

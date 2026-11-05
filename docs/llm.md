@@ -1,34 +1,35 @@
 # LLM review and privacy
 
-LLM rules are subjective editorial judgments—not an AI-authorship detector. Default `.md` inputs select `NAS` and `RDL`; that selection alone does not activate remote judging. Other inputs remain local unless an LLM opt-in enables judging.
+LLM rules are subjective editorial judgments—not an AI-authorship detector. Unless selection is configured, supported inputs select all `NAS` no-ai-slop and `RDL` readability rules; their selected LLM rules run by default. Other catalogs require explicit selection.
 
-## Default Markdown review
+## Default selection and judging
 
-When no global selection or matching per-file selection overrides it, an `.md` input uses `NAS` and `RDL`. This is a rule-selection default only: for `api = "completion"`, the model defaults to `openrouter/openrouter/free`, but no content is sent remotely unless judging is separately enabled. `api = "decisions"` requires an explicitly selected provider-supported model. Opt in with `[tool.style-audit.llm].enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file entry that selects LLM rules. A configured `model` or `--model` overrides the completion default. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default selection applies only to `.md`, not `.markdown`, `.rst`, `.txt`, Python, or Gherkin inputs.
+When no global selection or matching per-file entry overrides it, every supported input—including extracted Python docstrings, Marimo Markdown, Gherkin prose, and Git commit messages—uses `NAS` and `RDL`. LLM judging is enabled unless `[tool.style-audit.llm].enabled = false`. Chat completions use `openrouter/openrouter/free` by default; Decisions mode requires a provider-supported model. A configured `model` chooses the model but does not override `enabled = false`. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides.
 
-The default selection alone causes no remote request or charge. Once enabled, review sends visible prose and the selected rules' guidance and examples to the configured provider and may incur charges. Masking is not sensitive-data redaction; see [what the request contains](#what-the-request-contains).
+Default LLM review sends each eligible visible prose unit, plus the selected rules' guidance and examples, to the configured provider. It may incur charges. Masking is not sensitive-data redaction; private text in an audited document can still be transmitted. Set `enabled = false` or select only deterministic rules to keep a run local. See [what the request contains](#what-the-request-contains).
 
-## Opt in
+## Keep audits local
 
 ```toml
 [tool.style-audit]
-select = ["NAS001", "NAS106"]
+select = ["NAS00"]
 
 [tool.style-audit.llm]
-enabled = true
-model = "openrouter/openrouter/free"
+enabled = false
 ```
 
-Or enable one invocation:
+`NAS00` selects the local no-ai-slop detectors. The explicit disabled setting keeps later LLM selections local too.
+
+Default settings already judge selected NAS and readability LLM rules. To force LLM judging for one invocation when the project disables it:
 
 ```sh
-style-audit --llm --model openrouter/openrouter/free draft.md
-style-audit --select NAS106 --model openrouter/openrouter/free draft.md
+style-audit --llm draft.md
+style-audit --model openai/model draft.md
 ```
 
-[Per-file selections](configuration.md#per-file-rule-selection) can enable editorial rules only for matching paths. A matching entry that explicitly selects an LLM rule opts into that file's review, and the same entry does not enable review of unmatched files.
+[Per-file selections](configuration.md#per-file-rule-selection) choose eligible rules per path. Their selected LLM rules are judged by default; other files retain their own selection. `enabled = false` disables judging unless `--llm` or `--model` force-enables that invocation.
 
-When `model` is omitted, style-audit uses `openrouter/openrouter/free` for chat completions. With `api = "decisions"`, there is no default model: set a model supported by the provider's Decisions endpoint in TOML or with `--model`. Model selection alone does not activate remote calls. Global `llm.enabled`, `--llm`, and `--model` apply to LLM rules retained by each file's selection, so use a local global selection such as `NAS00` to keep other files local. CLI `--select NAS00` replaces file mappings as well as global selection and guarantees a local-only run.
+When `model` is omitted, style-audit uses `openrouter/openrouter/free` for chat completions. With `api = "decisions"`, there is no default model: set a model supported by the provider's Decisions endpoint in TOML or with `--model`. A TOML model alone does not override `enabled = false`; CLI `--model` force-enables judging. CLI `--select NAS00` replaces file mappings and selects only local checks.
 
 The default chat-completion model uses OpenRouter's `OPENROUTER_API_KEY`; Decisions mode uses the selected decision model's standard credential variable. Do not put raw API keys in TOML. The optional `api_key_env` setting names an environment variable, not its secret value. See [configuration](configuration.md#litellm-transport-settings) for supported transport settings.
 
@@ -38,7 +39,7 @@ Chat-completion judging is the default and returns validated quotes, reasons, an
 style-audit --select NAS106 --model openrouter/openrouter/free draft.md
 ```
 
-With `api = "completion"`, the default model is used unless overridden. Decisions mode requires a provider-supported model in configuration or `--model`. A model in configuration by itself does not enable remote calls. Default `.md` inputs select `NAS` and `RDL`, but that selection alone does not send text remotely. Judging requires selected LLM rules plus an opt-in through `llm.enabled = true`, `--llm`, `--model`, explicit LLM-rule selection, or a matching per-file selection. With configured selection, only retained rules are eligible. Selecting deterministic-only rules cannot be overridden by `--llm` or `--model`.
+With `api = "completion"`, the default model is used unless overridden. Decisions mode requires a provider-supported model in configuration or `--model`. With no configured selection, supported inputs select `NAS` and `RDL` and judge their LLM rules by default; `llm.enabled = false` disables those requests. Only retained rules are eligible, so a deterministic-only selection cannot be overridden by `--llm` or `--model`.
 
 ## What the request contains
 
@@ -67,7 +68,7 @@ The same rule scopes apply inside that docstring. A document-scoped rule does no
 
 Findings map back to the original file. Evidence uses the source spelling, so escaped characters and adjacent literal concatenation can make reported evidence differ from the decoded request text. Original indentation and physical newlines inside the located span remain source context. This is not redaction: private information in a docstring's unmasked prose or visible Gherkin heading/step text is eligible for transmission.
 
-Default directory scans include Python and `.feature` files. A model opt-in applies to ordinary Python docstrings, extracted Marimo Markdown cells, and unmasked Gherkin heading/step prose unless [include patterns](configuration.md) exclude them. Marimo source code, widget output, Mermaid diagrams, and Gherkin fixtures are not sent. Gherkin syntax, tags, comments, tables, and docstring fixtures are masked, and scenarios are not executed. See [Marimo Markdown handling](reference/cli.md#marimo-markdown-cells) and [Gherkin feature handling](reference/cli.md#gherkin-feature-files).
+Default directory scans include Python and `.feature` files. The default `NAS` and `RDL` selection applies to ordinary Python docstrings, extracted Marimo Markdown cells, and unmasked Gherkin heading/step prose. Those LLM rules send visible text by default unless judging is disabled or those rules are not selected. Marimo source code, widget output, Mermaid diagrams, and Gherkin fixtures are not sent. Gherkin syntax, tags, comments, tables, and docstring fixtures are masked, and scenarios are not executed. See [Marimo Markdown handling](reference/cli.md#marimo-markdown-cells) and [Gherkin feature handling](reference/cli.md#gherkin-feature-files).
 
 ### Marimo Markdown cells
 

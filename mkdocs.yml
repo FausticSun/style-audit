@@ -1,5 +1,5 @@
 site_name: style-audit
-site_description: A Python writing-style auditor with local NLP checks and optional LiteLLM review.
+site_description: A Python writing-style auditor with deterministic NLP checks and default LiteLLM judgments.
 strict: true
 
 theme:

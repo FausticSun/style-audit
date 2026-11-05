@@ -15,7 +15,7 @@ flowchart TD
     P -->|no| D
     D --> S[match file patterns / plan rules / check models]
     S --> E[analyze_deterministic for enabled local rules]
-    S --> F[judge_document for explicitly enabled LLM rules]
+    S --> F[judge_document for selected LLM rules when judging is enabled]
     E --> G[sort Diagnostic values]
     F --> G
     G --> H[render_text or render_json]
@@ -26,7 +26,7 @@ flowchart TD
 
 - `style_audit.__init__.main()` exports the installed `style-audit` command. `style_audit.__main__` provides `python -m style_audit`.
 - `cli.build_cli()` defines the Click command, and `cli.run()` loads settings, expands rule IDs, prefixes, and globs, gathers documents, plans each file's effective rules and model requirements, and returns an exit code plus rendered output. Matching per-file selections replace global selection with their union. CLI selection replaces both, and combined ignores always win. Plans are shared by all extracted documents of a file and validated before any provider call. `cli.main()` writes operational errors to stderr and maps them to status `2`.
-- `config.AuditConfig` stores the validated settings, including immutable `per_file_select` entries. `config.load_config()` discovers or opens TOML. The current working directory anchors discovery, while the TOML directory anchors per-file path matching. Unmatched `.md` inputs default to `NAS` and `RDL`; this does not enable LLM judging. Explicit selection and matching per-file rules override the default.
+- `config.AuditConfig` stores the validated settings, including immutable `per_file_select` entries. `config.load_config()` discovers or opens TOML. The current working directory anchors discovery, while the TOML directory anchors per-file path matching. Without an explicit global or per-file selection, supported inputs default to `NAS` and `RDL`, and selected LLM rules run unless judging is disabled with `llm.enabled = false`.
 - `AuditConfig`, `LiteLLMConfig`, `Rule`, `RuleExample`, `Diagnostic`, `CLIOptions`, `TextUnit`, `SourceMap`, and `TextDocument` use frozen, strict Pydantic `BaseModel`s. Text records are constructed with named fields; `TextDocument` keeps derived segmentation state private. Diagnostic JSON uses `model_dump`, and resolved provider API keys are excluded from settings serialization.
 - `rules.RULES` is the canonical ordered catalog loaded from the packaged per-ruleset YAML files under `src/style_audit/rules/` in stable NAS, RDL, STE, and MWG order. It contains validated IDs, scopes, prompts/descriptions, examples, and detector definitions: the NAS sequence, explicitly numbered RDL readability rules, all 61 ASD-STE100 Part 1 entries, and 13 general Microsoft Writing Style judgments. The supplied PDF's Part 2 controlled dictionary is not ingested. `STE606` and `STE801` use deterministic checks; other STE entries and all MWG entries use contextual LLM review.
 - `rule_catalog.load_project_rule_catalogs()` loads project-relative YAML files named by configuration, rejects paths escaping the TOML root and duplicate IDs, and returns validated custom rules. `AuditConfig.project_rules` carries these into the CLI beside bundled `rules.RULES`; custom codes use the same selector, deterministic, reporting, and LLM paths.

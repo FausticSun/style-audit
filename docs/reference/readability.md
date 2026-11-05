@@ -254,11 +254,11 @@ The financial word combination supplies no reconstructable mechanism. Keep the o
 
 ## Usage
 
-All readability rules use the LLM engine and sentence scope. They share one request per eligible sentence, using existing masking, provider opt-in, and evidence validation. No parser model or reference corpus is downloaded. Plain local checks remain local. Selecting `RDL` explicitly opts into judging; chat completions use the default model unless overridden, while Decisions requires an explicit provider-supported model.
+All readability rules use the LLM engine and sentence scope. They share one request per eligible sentence, using existing masking and evidence validation. No parser model or reference corpus is downloaded. `RDL` is included in the default selection and runs unless judging is disabled; chat completions use `openrouter/openrouter/free` unless overridden, while Decisions requires a provider-supported model.
 
 ```sh
-style-audit draft.md --select RDL --model openrouter/openrouter/free
-style-audit draft.md --select NAS00,RDL --model openrouter/openrouter/free
+style-audit draft.md
+style-audit draft.md --select NAS00,RDL
 ```
 
 Project configuration:

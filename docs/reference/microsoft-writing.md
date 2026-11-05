@@ -2,7 +2,7 @@
 
 `MWG` adapts broadly applicable writing guidance from the [Microsoft Writing Style Guide](https://learn.microsoft.com/en-us/style-guide/). The rules use original summaries and examples. They exclude Microsoft brand-specific guidance, product names and terminology, UI procedures, and proprietary word lists. This project is independent and is not endorsed by Microsoft.
 
-All rules use contextual LLM judgments. Selecting `MWG` opts into remote review and sends visible prose and rule guidance to the configured provider. Review the [LLM privacy and cost guidance](../llm.md) before enabling it. The default Markdown selection is unchanged.
+All rules use contextual LLM judgments. `MWG` is not part of the default `NAS` and `RDL` selection; selecting it makes its rules eligible for judging by default unless review is disabled. Review the [LLM privacy and cost guidance](../llm.md).
 
 <!-- generated-rule-cards:start -->
 

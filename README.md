@@ -1,10 +1,10 @@
 # style-audit
 
-A Python writing-style linter for Markdown, reStructuredText, plain text, Gherkin feature files, Python docstrings, and Marimo Markdown cells. It combines conservative deterministic checks with optional editorial judgments through [LiteLLM](https://docs.litellm.ai/). It reports patterns to review. It does not rewrite prose, score authorship, or claim that text was written by AI.
+A Python writing-style linter for Markdown, reStructuredText, plain text, Gherkin feature files, Python docstrings, and Marimo Markdown cells. It combines conservative deterministic checks with LLM editorial judgments through [LiteLLM](https://docs.litellm.ai/). It reports patterns to review. It does not rewrite prose, score authorship, or claim that text was written by AI.
 
 ## Install and run
 
-Requires Python 3.12 or newer. Follow the [new Python/uv project walkthrough](docs/installation.md#use-in-a-new-pythonuv-project) to add the tool as a development dependency, configure `pyproject.toml`, and run local or optional LLM checks. To work on this repository's checkout with [uv](https://docs.astral.sh/uv/):
+Requires Python 3.12 or newer. Follow the [new Python/uv project walkthrough](docs/installation.md#use-in-a-new-pythonuv-project) to add the tool as a development dependency, configure `pyproject.toml`, and run local checks or the default LLM review. To work on this repository's checkout with [uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv sync
@@ -46,7 +46,7 @@ style-audit src/ tests/ docs/render_rule_cards.py --select NAS00 --format json
 cat module.py | style-audit - --stdin-filename module.py --select NAS00
 ```
 
-The stdin name selects Python extraction when it ends in `.py` or `.pyi`: recognized Marimo `.py` apps expose literal Markdown cells, and other Python inputs expose docstrings. Otherwise stdin remains prose. Local checks need no provider. LLM opt-in applies only to extracted prose, never surrounding code or comments. See [Python inputs](docs/reference/cli.md#python-docstrings) and [own-code dogfooding](docs/dogfooding.md#audit-python-docstrings).
+The stdin name selects Python extraction when it ends in `.py` or `.pyi`: recognized Marimo `.py` apps expose literal Markdown cells, and other Python inputs expose docstrings. Otherwise stdin remains prose. Local checks need no provider. Default LLM judgments apply only to extracted prose, never surrounding code or comments; eligible prose is sent to the configured provider. See [Python inputs](docs/reference/cli.md#python-docstrings) and [own-code dogfooding](docs/dogfooding.md#audit-python-docstrings).
 
 ### Marimo Markdown cells
 
@@ -66,11 +66,11 @@ select = ["NAS001"]
 output = "text"
 ```
 
-Apply different rules by file pattern with `[tool.style-audit.per-file-select]`, for example `"docs/**" = ["NAS00?"]` and `"src/*.py" = ["NAS001"]`. Matching entries replace global selection. Overlaps combine and ignores win. See [per-file rule selection](docs/configuration.md#per-file-rule-selection) for patterns, stdin, CLI precedence, and file-specific LLM opt-ins.
+Apply different rules by file pattern with `[tool.style-audit.per-file-select]`, for example `"docs/**" = ["NAS00?"]` and `"src/*.py" = ["NAS001"]`. Matching entries replace global selection. Overlaps combine and ignores win. See [per-file rule selection](docs/configuration.md#per-file-rule-selection) for patterns, stdin, CLI precedence, and file-specific rule/privacy controls.
 
-See the [configuration guide](docs/configuration.md), [CLI reference](docs/reference/cli.md), and [LLM privacy guide](docs/llm.md) for selection precedence, models, and provider behavior. An LLM opt-in never overrides a deterministic-only selection.
+See the [configuration guide](docs/configuration.md), [CLI reference](docs/reference/cli.md), and [LLM privacy guide](docs/llm.md) for selection precedence, models, and provider behavior. `--llm` and `--model` can force-enable judging for selected rules; neither broadens a deterministic-only selection.
 
-Default `.md` audits select no-ai-slop (`NAS`) and readability (`RDL`) rules. This selects checks; LLM judging remains opt-in, so a normal Markdown scan does not send text remotely. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides. The default chat-completion model is `openrouter/openrouter/free` and uses `OPENROUTER_API_KEY`.
+Without a configured global selection or matching per-file selection, all supported inputs default to the complete no-ai-slop (`NAS`) and readability (`RDL`) rulesets. Selected LLM rules run by default and send eligible prose to the configured provider; set `[tool.style-audit.llm].enabled = false` or select deterministic-only rules to keep a run local. The default chat-completion model is `openrouter/openrouter/free` and uses `OPENROUTER_API_KEY`. Directory discovery skips `AGENTS.md` and `SKILL.md` at any depth; explicitly named paths remain intentional overrides.
 
 Example configuration:
 

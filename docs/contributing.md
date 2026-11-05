@@ -31,7 +31,7 @@ Run only the acceptance scenarios with:
 uv run --group dev pytest -m bdd -v
 ```
 
-The features cover local prose, Python docstrings and non-execution, named stdin, original source locations, file/rule glob precedence, nested configuration roots, explicit LLM opt-ins and privacy, fabricated chat evidence, response validation, and failure without partial JSON. They invoke the real CLI entry function, not a mocked analyzer or configuration parser.
+The features cover local prose, Python docstrings and non-execution, named stdin, original source locations, file/rule glob precedence, nested configuration roots, default and explicitly disabled LLM judging, privacy, fabricated chat evidence, response validation, and failure without partial JSON. They invoke the real CLI entry function, not a mocked analyzer or configuration parser.
 
 Add scenarios for consumer-visible boundaries, transitions, precedence, and errors. Use concrete input and expected findings rather than implementation details or generated-message wording. Feature docstrings contain TOML, Python, prose, or controlled provider JSON. Data tables describe expected diagnostics. Scenario outlines keep distinct boundary cases together. The `bdd` marker selects the scenarios without changing the legacy test layout.
 

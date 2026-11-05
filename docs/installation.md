@@ -90,27 +90,26 @@ Run `uv run style-audit example.py`: the local configuration reports `NAS001` at
 
 Audit an existing source tree with `uv run style-audit src/`, or pipe Python code with `cat example.py | uv run style-audit - --stdin-filename example.py`. The filename is needed to select Python extraction on stdin. `.py` Marimo apps expose literal Markdown cells; ordinary `.py` files and `.pyi` stubs expose docstrings. [Python inputs](reference/cli.md#python-docstrings) covers scope, decoding, and source locations.
 
-### Optional: enable LLM review
+### Default LLM review
 
-The default chat-completion model is `openrouter/openrouter/free` and uses OpenRouter's `OPENROUTER_API_KEY`. Set that variable in the environment; override the model with another LiteLLM `provider/model` if needed. Decisions mode requires a model supported by its provider. Never put raw credentials in project TOML.
+With no global or matching per-file `select`, style-audit applies all `NAS` and `RDL` rules to supported inputs and judges their LLM rules by default. Chat completions use `openrouter/openrouter/free` and OpenRouter's `OPENROUTER_API_KEY`; Decisions mode requires a provider-supported model. Never put raw credentials in project TOML.
 
-This invocation opts into readability review:
+This invocation combines local NAS checks with readability review:
 
 ```sh
 uv run style-audit draft.md --select NAS00,RDL
 ```
 
-`--select` replaces the local-only configured selection. The command runs the local checks plus the LLM-based [readability rules](reference/readability.md). Use `--select NAS,RDL` to include no-ai-slop editorial judgments too. A model flag alone does not broaden a deterministic-only selection.
+`--select` replaces the local-only selection from the earlier example. `NAS00` runs deterministic no-ai-slop checks and `RDL` enables readability judgments. Use `--select NAS,RDL` to include no-ai-slop LLM judgments too. `--model` overrides the default model and force-enables judging for selected LLM rules.
 
-For project-wide opt-in, **replace** the earlier `[tool.style-audit]` table with the following block. Do not add a second table with the same name:
+For project-wide selection, **replace** the earlier `[tool.style-audit]` table with this block; do not add a second table with the same name:
 
 ```toml
 [tool.style-audit]
-select = ["NAS00", "RDL"]
+select = ["NAS", "RDL"]
 output = "text"
 
 [tool.style-audit.llm]
-enabled = true
 model = "openrouter/openrouter/free"
 
 [tool.style-audit.llm.litellm]
@@ -118,9 +117,9 @@ api_key_env = "OPENROUTER_API_KEY"
 custom_llm_provider = "openrouter"
 ```
 
-Set `OPENROUTER_API_KEY` in the environment before running this example. The optional `[tool.style-audit.llm.litellm]` table can override the API base, API-key environment variable, provider, timeout, and temperature for other LiteLLM chat models; see [LiteLLM transport settings](configuration.md#litellm-transport-settings).
+The default ruleset selection already enables LLM judging; `model` selects its LiteLLM backend. Set `enabled = false` to disable judging unless the CLI explicitly force-enables it with `--llm` or `--model`. The optional `[tool.style-audit.llm.litellm]` table can override the API base, API-key environment variable, provider, timeout, and temperature for other chat models; see [LiteLLM transport settings](configuration.md#litellm-transport-settings).
 
-Selected LLM rules send masked document units to the configured provider and can incur charges. Adding rule scopes can increase request volume.
+Selected LLM rules send masked document units to the configured provider and can incur charges. Masking is not sensitive-data redaction.
 
 ### Other checkouts and CI
 
@@ -133,7 +132,7 @@ uv sync --locked --group dev
 uv run --no-sync style-audit --select NAS00
 ```
 
-The explicit selection keeps CI local even if the optional LLM table is enabled. Exit status `1` or `2` should fail the check. Installing with `--no-dev` omits the linter, so include the `dev` group in the environment used for auditing.
+The explicit local selection keeps CI local even when default LLM judging is active or the project config enables it. Exit status `1` or `2` should fail the check. Installing with `--no-dev` omits the linter, so include the `dev` group in the environment used for auditing.
 
 ## Install from a checkout
 
