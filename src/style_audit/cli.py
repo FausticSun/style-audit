@@ -4,6 +4,7 @@ from collections.abc import Sequence
 import fnmatch
 import math
 import os
+import subprocess
 from pathlib import Path
 import sys
 
@@ -11,7 +12,7 @@ import click
 from pydantic import BaseModel, ConfigDict
 
 from .config import (
-    DEFAULT_MARKDOWN_SELECT,
+    DEFAULT_SELECT,
     AuditConfig,
     load_config,
 )
@@ -132,6 +133,51 @@ def _collect(paths: Sequence[str], config: AuditConfig, stdin_text: str | None, 
     return documents
 
 
+def _commit_message_documents(revision: str, cwd: Path) -> list[TextDocument]:
+    if not revision or revision.startswith("-"):
+        raise AuditError("--commit-messages requires a Git revision or range")
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "log",
+                "--no-color",
+                "--encoding=UTF-8",
+                "--format=%H%x00%B%x00",
+                revision,
+            ],
+            cwd=cwd,
+            capture_output=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise AuditError(f"cannot read Git commit messages: {exc}") from exc
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise AuditError(
+            f"cannot read Git commit messages for {revision!r}: {detail or 'git log failed'}"
+        )
+
+    fields = result.stdout.split(b"\0")
+    if len(fields) % 2 != 1:
+        raise AuditError("Git returned malformed commit-message output")
+    documents: list[TextDocument] = []
+    for index in range(0, len(fields) - 1, 2):
+        commit = fields[index].strip()
+        if not commit:
+            continue
+        try:
+            commit_id = commit.decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise AuditError("Git returned an invalid commit ID") from exc
+        try:
+            message = fields[index + 1].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise AuditError(f"commit {commit_id} has a message that is not valid UTF-8") from exc
+        documents.append(TextDocument(path=f"commit/{commit_id}.txt", text=message))
+    return documents
+
+
 def _validate_cli_threshold(
     ctx: click.Context,
     param: click.Parameter,
@@ -152,6 +198,7 @@ class CLIOptions(BaseModel):
     format: str | None
     llm: bool
     model: str | None
+    commit_messages: str | None = None
     threshold: float | None = None
     show_confidences: bool = False
     stdin_filename: str
@@ -160,7 +207,13 @@ class CLIOptions(BaseModel):
 def build_cli() -> click.Command:
     @click.command(
         name="style-audit",
-        help="Find source-backed writing-style patterns without guessing who wrote the text.",
+        help=(
+            "Find source-backed writing-style patterns without guessing who wrote the text. "
+            "Without a global or matching per-file selection, it applies all NAS and RDL "
+            "rules and sends eligible prose to the configured LLM provider by default. "
+            "Set [tool.style-audit.llm].enabled = false or select deterministic-only rules "
+            "to avoid remote judging."
+        ),
         context_settings={"help_option_names": ["-h", "--help"]},
     )
     @click.argument("paths", nargs=-1)
@@ -186,7 +239,12 @@ def build_cli() -> click.Command:
         type=click.Choice(("text", "json")),
         help="output format (default: project setting or text)",
     )
-    @click.option("--llm", is_flag=True, help="explicitly enable LLM judgments")
+    @click.option(
+        "--commit-messages",
+        metavar="REVISION",
+        help="audit commit messages reachable from this Git revision or range",
+    )
+    @click.option("--llm", is_flag=True, help="force-enable LLM judgments for selected rules")
     @click.option(
         "--model",
         help="LiteLLM model for judging (completion default: openrouter/openrouter/free; required for Decisions)",
@@ -223,6 +281,7 @@ def build_cli() -> click.Command:
         format: str | None,
         llm: bool,
         model: str | None,
+        commit_messages: str | None,
         threshold: float | None,
         show_confidences: bool,
         stdin_filename: str,
@@ -235,6 +294,7 @@ def build_cli() -> click.Command:
             format=format,
             llm=llm,
             model=model,
+            commit_messages=commit_messages,
             threshold=threshold,
             show_confidences=show_confidences,
             stdin_filename=stdin_filename,
@@ -254,6 +314,8 @@ def build_cli() -> click.Command:
 def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None) -> tuple[int, str]:
     working_directory = (cwd or Path.cwd()).resolve()
     config = load_config(working_directory, args.config)
+    if args.commit_messages is not None and args.paths:
+        raise AuditError("--commit-messages cannot be combined with input paths")
     if args.threshold is not None:
         if not math.isfinite(args.threshold) or not 0 <= args.threshold <= 1:
             raise AuditError("--threshold must be a finite number from 0 to 1")
@@ -268,7 +330,7 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
     rule_codes = tuple(rules_by_code)
     selection = _csv(args.select, "--select") if args.select else config.select
     ignored = _expand((*config.ignore, *_csv(args.ignore, "--ignore")), rule_codes)
-    enabled = (_expand(selection, rule_codes) if selection else set(rule_codes)) - ignored
+    enabled = _expand(selection or DEFAULT_SELECT, rule_codes) - ignored
     per_file = tuple(
         (pattern, _expand(values, rule_codes) - ignored)
         for pattern, values in config.per_file_select
@@ -276,26 +338,25 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
     if args.select:
         per_file = ()
     model = args.model or config.llm_model
-    paths = args.paths or ["."]
-    if "-" in paths and stdin_text is None:
-        stdin_text = sys.stdin.read()
-    documents = _collect(paths, config, stdin_text, args.stdin_filename, working_directory)
+    if args.commit_messages is not None:
+        documents = _commit_message_documents(args.commit_messages, working_directory)
+    else:
+        paths = args.paths or ["."]
+        if "-" in paths and stdin_text is None:
+            stdin_text = sys.stdin.read()
+        documents = _collect(paths, config, stdin_text, args.stdin_filename, working_directory)
     rule_plans: dict[str, tuple[tuple[Rule, ...], tuple[Rule, ...], str | None]] = {}
     for document in documents:
         if document.path in rule_plans:
             continue
-        relative = Path(os.path.relpath(working_directory / document.path, config.root)).as_posix()
-        matches = [codes for pattern, codes in per_file if fnmatch.fnmatchcase(relative, pattern)]
-        is_default_markdown = (
-            Path(document.path).suffix.lower() == ".md"
-            and not args.select
-            and not config.select
-            and not matches
+        relative = (
+            document.path
+            if args.commit_messages is not None
+            else Path(os.path.relpath(working_directory / document.path, config.root)).as_posix()
         )
+        matches = [codes for pattern, codes in per_file if fnmatch.fnmatchcase(relative, pattern)]
         if matches:
             codes = set().union(*matches)
-        elif is_default_markdown:
-            codes = _expand(DEFAULT_MARKDOWN_SELECT, rule_codes) - ignored
         else:
             codes = enabled
         selected_rules = tuple(rule for rule in rules if rule.code in codes)
@@ -303,9 +364,8 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
         llm_rules = tuple(rule for rule in selected_rules if rule.engine == "llm")
         if config.ste_disallowed_words and any(rule.code == "STE101" for rule in selected_rules):
             deterministic_rules += (rules_by_code["STE101"],)
-        llm_selected = bool(args.select or config.select or matches)
         use_llm = bool(llm_rules) and (
-            config.llm_enabled is True or args.llm or args.model is not None or llm_selected
+            config.llm_enabled is not False or args.llm or args.model is not None
         )
         document_model = model
         if use_llm and document_model is None:
@@ -314,7 +374,10 @@ def run(args: CLIOptions, stdin_text: str | None = None, cwd: Path | None = None
 
     if args.threshold is not None or args.show_confidences:
         if not any(llm_rules for _, llm_rules, _ in rule_plans.values()):
-            raise AuditError("--threshold and --show-confidences require selected LLM rules and an LLM opt-in")
+            raise AuditError(
+                "--threshold and --show-confidences require selected LLM rules "
+                "with judging enabled"
+            )
     confidence_scores: list[ConfidenceScore] | None = [] if args.show_confidences else None
     findings: list[Diagnostic] = []
     for document in documents:

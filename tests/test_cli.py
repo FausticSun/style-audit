@@ -3,6 +3,7 @@
 import json
 from io import StringIO
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -18,6 +19,17 @@ def _parse_options(arguments: list[str]) -> CLIOptions:
     command = build_cli()
     with command.make_context("style-audit", list(arguments)) as context:
         return CLIOptions(**context.params)
+
+
+def _git(root: Path, *arguments: str) -> str:
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        encoding="utf-8",
+    )
+    return result.stdout.strip()
 
 _PROJECT_RULESET = """schema_version: 1
 rules:
@@ -152,12 +164,12 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(AuditError, "include must be an array"):
                 load_config(project)
 
-    def test_default_model_is_present_but_does_not_enable_remote_judging(self) -> None:
+    def test_default_model_is_present_and_llm_default_is_unspecified(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary)
             config = load_config(project)
             self.assertEqual(config.llm_model, "openrouter/openrouter/free")
-            self.assertFalse(config.llm_enabled)
+            self.assertIsNone(config.llm_enabled)
             self.assertEqual(config.llm_api, "completion")
 
             (project / "pyproject.toml").write_text(
@@ -507,20 +519,47 @@ class CliTests(unittest.TestCase):
         self.assertTrue(any("RDL" in text for text in requested_prompts))
         self.assertFalse(any("STE" in text for text in requested_prompts))
 
-    def test_default_markdown_is_local_without_llm_opt_in(self) -> None:
+    def test_default_rulesets_run_nas_and_readability_judgments(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text("[tool.style-audit]\n", encoding="utf-8")
             (root / "README.md").write_text("A robust parser works.", encoding="utf-8")
+            (root / "draft.txt").write_text("A short sentence uses clear words.", encoding="utf-8")
+            response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content='{"findings":[]}',
+            ))])
+            with patch("style_audit.llm.litellm.completion", return_value=response) as chat_provider:
+                code, output = run(_parse_options([str(root), "--format", "json"]), cwd=root)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            [(item["path"], item["code"]) for item in json.loads(output)["findings"]],
+            [("README.md", "NAS001")],
+        )
+        self.assertGreater(chat_provider.call_count, 0)
+        prompts = json.dumps([call.kwargs["messages"] for call in chat_provider.call_args_list])
+        self.assertIn("NAS", prompts)
+        self.assertIn("RDL", prompts)
+        self.assertNotIn("STE", prompts)
+        self.assertNotIn("MWG", prompts)
+        self.assertIn("A short sentence uses clear words.", prompts)
+
+    def test_llm_enabled_false_keeps_default_rules_local(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "pyproject.toml").write_text(
+                "[tool.style-audit.llm]\nenabled = false\n", encoding="utf-8",
+            )
+            (root / "README.md").write_text("A robust parser works.", encoding="utf-8")
             with patch("style_audit.llm.litellm.completion") as chat_provider:
                 code, output = run(_parse_options([str(root), "--format", "json"]), cwd=root)
 
-            self.assertEqual(code, 1)
-            self.assertEqual(
-                [(item["path"], item["code"]) for item in json.loads(output)["findings"]],
-                [("README.md", "NAS001")],
-            )
-            chat_provider.assert_not_called()
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            [(item["path"], item["code"]) for item in json.loads(output)["findings"]],
+            [("README.md", "NAS001")],
+        )
+        chat_provider.assert_not_called()
 
     def test_chat_model_runs_through_cli(self) -> None:
         response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
@@ -671,25 +710,81 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("finite number from 0 to 1", stderr.getvalue())
 
-    def test_confidence_reporting_does_not_enable_llm_judging(self) -> None:
+    def test_confidence_reporting_does_not_override_disabled_llm(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text(
-                '[tool.style-audit.llm]\nmodel = "openai/test-model"\napi = "decisions"\n',
+                '[tool.style-audit.llm]\nenabled = false\nmodel = "openai/test-model"\napi = "decisions"\n',
                 encoding="utf-8",
             )
             args = _parse_options([
                 "-", "--stdin-filename", "draft.md", "--show-confidences",
             ])
             with patch("style_audit.llm.litellm.decisions") as provider:
-                with self.assertRaisesRegex(AuditError, "LLM opt-in"):
+                with self.assertRaisesRegex(
+                    AuditError, "require selected LLM rules with judging enabled",
+                ):
                     run(args, "First sentence.", root)
             provider.assert_not_called()
+
+    def test_commit_messages_audit_reachable_history_and_ranges(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _git(root, "init", "--quiet")
+            _git(root, "config", "user.name", "Style audit tests")
+            _git(root, "config", "user.email", "style-audit@example.invalid")
+            _git(root, "config", "commit.gpgsign", "false")
+            _git(root, "commit", "--quiet", "--allow-empty", "-m", "# 🌿 Past heading")
+            first_commit = _git(root, "rev-parse", "HEAD")
+            _git(root, "commit", "--quiet", "--allow-empty", "-m", "Clear follow-up")
+
+            args = _parse_options(["--commit-messages", "HEAD", "--format", "json"])
+            response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content='{"findings":[]}',
+            ))])
+            with patch("style_audit.llm.litellm.decisions") as decisions:
+                with patch("style_audit.llm.litellm.completion", return_value=response) as completion:
+                    code, output = run(args, cwd=root)
+
+            self.assertEqual(code, 1)
+            findings = json.loads(output)["findings"]
+            self.assertIn(
+                (f"commit/{first_commit}.txt", "NAS002", 1),
+                [(item["path"], item["code"], item["line"]) for item in findings],
+            )
+            decisions.assert_not_called()
+            requests = json.dumps([call.kwargs["messages"] for call in completion.call_args_list])
+            self.assertGreater(completion.call_count, 0)
+            self.assertIn("NAS", requests)
+            self.assertIn("RDL", requests)
+            self.assertNotIn("STE", requests)
+            self.assertNotIn("MWG", requests)
+
+            args = _parse_options([
+                "--commit-messages", "HEAD~1..HEAD", "--select", "NAS002", "--format", "json",
+            ])
+            code, output = run(args, cwd=root)
+            self.assertEqual((code, json.loads(output)["findings"]), (0, []))
+
+            args = _parse_options(["--commit-messages", "not-a-revision"])
+            with self.assertRaisesRegex(AuditError, "cannot read Git commit messages"):
+                run(args, cwd=root)
+
+    def test_commit_message_mode_rejects_paths_and_requires_a_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = _parse_options(["--commit-messages", "HEAD", "draft.md"])
+            with self.assertRaisesRegex(AuditError, "cannot be combined with input paths"):
+                run(args, cwd=root)
+
+            args = _parse_options(["--commit-messages", "HEAD"])
+            with self.assertRaisesRegex(AuditError, "cannot read Git commit messages"):
+                run(args, cwd=root)
 
     def test_clean_stdin_and_explicit_selection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            args = _parse_options(["-", "--stdin-filename", "draft.txt"])
+            args = _parse_options(["-", "--stdin-filename", "draft.txt", "--select", "NAS00"])
             code, stdout = run(args, "Ordinary clear prose.", root)
             self.assertEqual((code, stdout), (0, ""))
 
@@ -698,7 +793,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("NAS002", stdout)
 
-    def test_input_errors_and_llm_opt_in(self) -> None:
+    def test_input_errors_and_selected_llm_rules(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             args = _parse_options(["missing.md"])
@@ -1228,7 +1323,7 @@ class CliTests(unittest.TestCase):
             (root / "src").mkdir()
             config = root / "pyproject.toml"
             settings = (
-                '[tool.style-audit]\noutput = "json"\n'
+                '[tool.style-audit]\nselect = ["NAS001"]\noutput = "json"\n'
                 '[tool.style-audit.per-file-select]\n"review/*.md" = ["RDL10[46]"]\n'
             )
             config.write_text(settings + '[tool.style-audit.llm]\nmodel = "openai/test-model"\n', encoding="utf-8")

@@ -1,8 +1,8 @@
 @bdd
-Feature: Explicit and source-grounded editorial review
-  Model findings require an opt-in, valid source evidence, and a successful provider response.
+Feature: Selected and source-grounded editorial review
+  Selected LLM rules require valid source evidence and a successful provider response.
 
-  Scenario: A per-file LLM opt-in never sends local-only files to a provider
+  Scenario: A per-file selection never sends local-only files to a provider
     Given the project configuration:
       """
       [tool.style-audit]

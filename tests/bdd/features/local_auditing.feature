@@ -108,6 +108,12 @@ Feature: Local prose and Python docstring auditing
   Scenario: Configured lexical vocabularies apply to NAS and STE rules
     Given the project configuration:
       """
+      [tool.style-audit]
+      select = ["NAS00", "STE101"]
+
+      [tool.style-audit.llm]
+      enabled = false
+
       [tool.style-audit.no-ai-slop]
       allowed-words = ["robust"]
       disallowed-words = ["excellent"]

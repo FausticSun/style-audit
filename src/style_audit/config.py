@@ -28,7 +28,7 @@ DEFAULT_EXCLUDE = (
     ".git", ".venv", "venv", "build", "dist", "site", "__pycache__", "AGENTS.md", "SKILL.md",
 )
 
-DEFAULT_MARKDOWN_SELECT = ("NAS", "RDL")
+DEFAULT_SELECT = ("NAS", "RDL")
 
 DEFAULT_LLM_MODEL = "openrouter/openrouter/free"
 
@@ -130,7 +130,7 @@ class AuditConfig(BaseModel):
     include: tuple[str, ...] = DEFAULT_INCLUDE
     exclude: tuple[str, ...] = DEFAULT_EXCLUDE
     output: Literal["text", "json"] = "text"
-    llm_enabled: bool = False
+    llm_enabled: bool | None = None
     llm_model: str | None = None
     llm_litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
     llm_api: Literal["completion", "decisions"] = "completion"
@@ -191,7 +191,7 @@ class _STEWordSettings(_WordSettings):
 class _LLMSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    enabled: bool = False
+    enabled: bool | None = None
     model: str | None = None
     litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
     api: Literal["completion", "decisions"] = "completion"
@@ -199,7 +199,9 @@ class _LLMSettings(BaseModel):
 
     @field_validator("enabled", mode="before")
     @classmethod
-    def validate_enabled(cls, value: object) -> bool:
+    def validate_enabled(cls, value: object) -> bool | None:
+        if value is None:
+            return None
         if not isinstance(value, bool):
             raise ValueError("[tool.style-audit.llm].enabled must be a boolean")
         return value
